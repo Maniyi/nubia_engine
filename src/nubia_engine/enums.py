@@ -44,3 +44,11 @@ class BrainwashAvailability(StrEnum):
 
     AVAILABLE = "AVAILABLE"
     SPENT = "SPENT"
+
+
+class ActionKind(StrEnum):
+    """An ordinary action supported by the Milestone 2 engine."""
+
+    MOVE = "MOVE"
+    CAPTURE = "CAPTURE"
+    SWITCH = "SWITCH"

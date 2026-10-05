@@ -5,11 +5,13 @@ The authoritative game specification is [`docs/NUBIA_RULES.md`](docs/NUBIA_RULES
 with confirmed engine interpretations in
 [`docs/ENGINE_DECISIONS.md`](docs/ENGINE_DECISIONS.md).
 
-## Milestone 1
+## Milestone 2
 
-The current implementation is an immutable domain foundation: the 10 x 10 board,
-owner-relative coordinates, LAND/SEA terrain, resource mines, pieces, and the
-complete deterministic starting position. It does not yet implement gameplay.
+The engine provides the immutable Milestone 1 domain foundation plus deterministic
+ordinary movement, capture, High Chief switching, Peasant orientation and special
+horizontal movement, Imperion palace movement, and validated immutable state
+transitions. Public action generation is ordered by source square, destination
+square, then action kind.
 
 ## Development setup
 
@@ -33,9 +35,7 @@ python -m mypy src tests
 
 ## Deferred work
 
-Movement and capture generation, legal-action validation, High Chief switching,
-Peasant directional movement, GBESELE, Brainwash actions and re-brainwashing,
-victory and scoring, repetition and no-progress draws, move notation, CLI
-gameplay, AI/search/training, APIs, website integration, persistence, and
-multiplayer are intentionally deferred.
-
+GBESELE, Brainwash actions and re-brainwashing, victory and scoring, repetition
+and no-progress draws, terminal-state enforcement, move notation, CLI gameplay,
+AI/search/training, APIs, website integration, persistence, and multiplayer are
+intentionally deferred.
