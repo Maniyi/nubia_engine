@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass
 
 from nubia_ai.agent import AgentError, NoActionAvailableError, WrongTurnError
@@ -91,19 +92,19 @@ class SearchResult:
 
 @dataclass(slots=True)
 class _Counters:
-    nodes: int = 1
+    nodes: int = 0
     leaves: int = 0
     cutoffs: int = 0
     max_depth: int = 0
 
 
-def search_state(
+def _validate_search_request(
     state: GameState,
     perspective: Empire,
     config: SearchConfig,
-    weights: EvaluationWeights = DEFAULT_WEIGHTS,
-) -> SearchResult:
-    """Search ``state`` from one fixed empire's perspective."""
+    weights: EvaluationWeights,
+) -> tuple[Action, ...]:
+    """Validate one search request and return its stable root action order."""
 
     if not isinstance(state, GameState):
         raise TypeError("state must be a GameState")
@@ -125,8 +126,56 @@ def search_state(
         raise SearchInvariantError(
             "the engine returned no legal actions for a non-terminal root state"
         )
+    return root_actions
 
-    counters = _Counters()
+
+def _search_state(
+    state: GameState,
+    perspective: Empire,
+    config: SearchConfig,
+    weights: EvaluationWeights,
+    *,
+    counters: _Counters | None = None,
+    before_node: Callable[[], None] | None = None,
+) -> SearchResult:
+    """Internal fixed search with an optional cooperative node-entry hook."""
+
+    root_actions = _validate_search_request(state, perspective, config, weights)
+    active_counters = counters if counters is not None else _Counters()
+    if before_node is not None:
+        before_node()
+    active_counters.nodes += 1
+    return _run_search(
+        state,
+        perspective,
+        config,
+        weights,
+        root_actions,
+        active_counters,
+        before_node,
+    )
+
+
+def search_state(
+    state: GameState,
+    perspective: Empire,
+    config: SearchConfig,
+    weights: EvaluationWeights = DEFAULT_WEIGHTS,
+) -> SearchResult:
+    """Search ``state`` from one fixed empire's perspective."""
+    return _search_state(state, perspective, config, weights)
+
+
+def _run_search(
+    state: GameState,
+    perspective: Empire,
+    config: SearchConfig,
+    weights: EvaluationWeights,
+    root_actions: tuple[Action, ...],
+    counters: _Counters,
+    before_node: Callable[[], None] | None,
+) -> SearchResult:
+    """Implementation body split out to keep public validation unchanged."""
 
     def visit(
         current: GameState,
@@ -135,6 +184,8 @@ def search_state(
         alpha: int | None,
         beta: int | None,
     ) -> tuple[int, tuple[Action, ...]]:
+        if before_node is not None:
+            before_node()
         counters.nodes += 1
         counters.max_depth = max(counters.max_depth, depth_from_root)
         if current.result is not None or remaining_depth == 0:

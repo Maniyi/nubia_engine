@@ -17,6 +17,15 @@ from nubia_ai.evaluation import (
     evaluate_state,
 )
 from nubia_ai.heuristic_agent import HeuristicAgent, ScoredAction
+from nubia_ai.iterative import (
+    CumulativeSearchStats,
+    IterationRecord,
+    IterativeSearchConfig,
+    IterativeSearchResult,
+    SearchStopReason,
+    iterative_search_state,
+)
+from nubia_ai.iterative_agent import IterativeMinimaxAgent
 from nubia_ai.match import MatchResult, run_match
 from nubia_ai.minimax_agent import MinimaxAgent
 from nubia_ai.random_agent import RandomAgent
@@ -33,10 +42,15 @@ __all__ = [
     "Agent",
     "AgentConfigurationError",
     "AgentError",
+    "CumulativeSearchStats",
     "EvaluationBreakdown",
     "EvaluationWeights",
     "HeuristicAgent",
     "IllegalAgentActionError",
+    "IterationRecord",
+    "IterativeMinimaxAgent",
+    "IterativeSearchConfig",
+    "IterativeSearchResult",
     "MatchLimitExceededError",
     "MatchResult",
     "MatchupSummary",
@@ -48,8 +62,10 @@ __all__ = [
     "SearchInvariantError",
     "SearchResult",
     "SearchStats",
+    "SearchStopReason",
     "WrongTurnError",
     "evaluate_state",
+    "iterative_search_state",
     "run_match",
     "run_matchup",
     "search_state",

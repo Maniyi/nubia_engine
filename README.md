@@ -5,7 +5,7 @@ The authoritative game specification is [`docs/NUBIA_RULES.md`](docs/NUBIA_RULES
 with confirmed engine interpretations in
 [`docs/ENGINE_DECISIONS.md`](docs/ENGINE_DECISIONS.md).
 
-## Milestone 7
+## Milestone 8
 
 The engine provides immutable rules state plus deterministic ordinary movement,
 capture, High Chief switching, Peasant movement, Imperion palace movement and
@@ -25,6 +25,12 @@ Milestone 7 adds deterministic depth-limited minimax, optional alpha-beta
 pruning, immutable search diagnostics, and principal variations. Plain minimax
 remains available as a correctness reference, and both modes preserve the
 engine's canonical action order for deterministic ties.
+Milestone 8 adds iterative deepening through a required maximum depth, optional
+cumulative node and wall-clock budgets, last-completed-iteration decisions, and
+per-iteration plus cumulative telemetry. An interrupted partial iteration is
+never presented as complete. If depth one cannot finish, the iterative agent
+returns the first action in canonical engine order as an explicitly unevaluated
+fallback.
 Dependency direction is strictly `nubia_ai` to `nubia_engine`; the rules engine
 does not know about agents.
 
@@ -44,6 +50,8 @@ Run a small reproducible baseline experiment with:
 python -m nubia_ai --agent-a heuristic --agent-b random --games 10 --seed 42 --swap-sides
 nubia-ai --agent-a random --agent-b random --games 2 --seed 42
 python -m nubia_ai --agent-a minimax --depth-a 2 --agent-b heuristic --games 2 --seed 42 --swap-sides
+python -m nubia_ai --agent-a iterative --max-depth-a 3 --node-limit-a 5000 --agent-b heuristic --games 2 --seed 42 --swap-sides
+python -m nubia_ai --agent-a iterative --max-depth-a 4 --time-ms-a 100 --agent-b random --games 2 --seed 42
 ```
 
 These agents are transparent baselines, not claims of strategic strength. The
@@ -51,6 +59,12 @@ heuristic agent evaluates only the immediate successor and does not model a
 reply; the random agent samples uniformly from legal actions. Minimax uses
 alpha-beta by default; pass `--no-alpha-beta` for the complete-tree reference
 mode. `--depth-a` and `--depth-b` are ignored for non-minimax agents.
+Iterative agents use `--max-depth-a`/`--max-depth-b` and optionally
+`--time-ms-a`/`--time-ms-b` and `--node-limit-a`/`--node-limit-b`. Milliseconds
+are converted to seconds only at the CLI boundary. Node-limited and unlimited
+searches are deterministic; wall-clock-limited completed depth can vary with
+machine speed and system load. If both budgets expire at the same cooperative
+check, the node limit is reported first.
 
 ## Development setup
 
@@ -74,7 +88,8 @@ python -m mypy src tests
 
 ## Deferred work
 
-Notation parsing, serialization/save files, iterative deepening, transposition
-tables, time controls, MCTS, self-play or reinforcement
-learning, neural networks, PyTorch/GPU training, human-versus-AI or graphical UI,
-APIs, website integration, persistence, multiplayer, and deployment are deferred.
+Notation parsing, serialization/save files, transposition tables,
+repetition-aware cache keys, move ordering, Zobrist hashing, quiescence search,
+aspiration windows, parallel search, MCTS, self-play or reinforcement learning,
+neural networks, PyTorch/GPU training, human-versus-AI or graphical UI, APIs,
+website integration, persistence, multiplayer, and deployment are deferred.

@@ -3,12 +3,15 @@
 from __future__ import annotations
 
 import argparse
+import math
 from collections import Counter
 from collections.abc import Callable, Sequence
 from dataclasses import dataclass
 
 from nubia_ai.agent import Agent, MatchLimitExceededError
 from nubia_ai.heuristic_agent import HeuristicAgent
+from nubia_ai.iterative import IterativeSearchConfig
+from nubia_ai.iterative_agent import IterativeMinimaxAgent
 from nubia_ai.match import MatchResult, run_match
 from nubia_ai.minimax_agent import MinimaxAgent
 from nubia_ai.random_agent import RandomAgent
@@ -42,6 +45,13 @@ def _positive(value: str) -> int:
     parsed = int(value)
     if parsed <= 0:
         raise argparse.ArgumentTypeError("must be a positive integer")
+    return parsed
+
+
+def _positive_float(value: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed) or parsed <= 0:
+        raise argparse.ArgumentTypeError("must be a finite positive number")
     return parsed
 
 
@@ -151,6 +161,9 @@ def _factory(
     *,
     depth: int = 1,
     use_alpha_beta: bool = True,
+    max_depth: int = 3,
+    time_limit_seconds: float | None = None,
+    node_limit: int | None = None,
 ) -> AgentFactory:
     if kind == "random":
         return lambda empire, seed: RandomAgent(
@@ -164,6 +177,18 @@ def _factory(
         config = SearchConfig(depth, use_alpha_beta)
         return lambda empire, _seed: MinimaxAgent(
             empire, config, name=name or f"MinimaxAgent(depth={depth})"
+        )
+    if kind == "iterative":
+        iterative_config = IterativeSearchConfig(
+            max_depth,
+            use_alpha_beta,
+            time_limit_seconds,
+            node_limit,
+        )
+        return lambda empire, _seed: IterativeMinimaxAgent(
+            empire,
+            iterative_config,
+            name=name,
         )
     raise ValueError(f"unknown agent kind: {kind}")
 
@@ -193,7 +218,7 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Run the noninteractive baseline benchmark CLI."""
 
     parser = argparse.ArgumentParser(description="Benchmark baseline NUBIA agents")
-    choices = ("random", "heuristic", "minimax")
+    choices = ("random", "heuristic", "minimax", "iterative")
     parser.add_argument("--agent-a", choices=choices, default="random")
     parser.add_argument("--agent-b", choices=choices, default="heuristic")
     parser.add_argument(
@@ -201,6 +226,42 @@ def main(argv: Sequence[str] | None = None) -> int:
         type=_positive,
         default=1,
         help="search depth for minimax agent A (ignored for other agents)",
+    )
+    parser.add_argument(
+        "--max-depth-a",
+        type=_positive,
+        default=3,
+        help="maximum depth for iterative agent A (ignored for other agents)",
+    )
+    parser.add_argument(
+        "--max-depth-b",
+        type=_positive,
+        default=3,
+        help="maximum depth for iterative agent B (ignored for other agents)",
+    )
+    parser.add_argument(
+        "--time-ms-a",
+        type=_positive_float,
+        default=None,
+        help="whole-search milliseconds per move for iterative agent A",
+    )
+    parser.add_argument(
+        "--time-ms-b",
+        type=_positive_float,
+        default=None,
+        help="whole-search milliseconds per move for iterative agent B",
+    )
+    parser.add_argument(
+        "--node-limit-a",
+        type=_positive,
+        default=None,
+        help="cumulative nodes per move for iterative agent A",
+    )
+    parser.add_argument(
+        "--node-limit-b",
+        type=_positive,
+        default=None,
+        help="cumulative nodes per move for iterative agent B",
     )
     parser.add_argument(
         "--depth-b",
@@ -220,15 +281,46 @@ def main(argv: Sequence[str] | None = None) -> int:
     args = parser.parse_args(argv)
     alpha_beta = not args.no_alpha_beta
 
-    def label(side: str, kind: str, depth: int) -> str:
+    def label(
+        side: str,
+        kind: str,
+        depth: int,
+        max_depth: int,
+        time_ms: float | None,
+        node_limit: int | None,
+    ) -> str:
         base = f"agent-{side}:{kind}"
         if kind == "minimax":
             return f"{base}(depth={depth},alpha_beta={alpha_beta})"
+        if kind == "iterative":
+            limits = [
+                f"max_depth={max_depth}",
+                f"alpha_beta={alpha_beta}",
+            ]
+            if time_ms is not None:
+                limits.append(f"time_ms={time_ms:g}")
+            if node_limit is not None:
+                limits.append(f"node_limit={node_limit}")
+            return f"{base}({','.join(limits)})"
         return base
 
     labels = (
-        label("a", args.agent_a, args.depth_a),
-        label("b", args.agent_b, args.depth_b),
+        label(
+            "a",
+            args.agent_a,
+            args.depth_a,
+            args.max_depth_a,
+            args.time_ms_a,
+            args.node_limit_a,
+        ),
+        label(
+            "b",
+            args.agent_b,
+            args.depth_b,
+            args.max_depth_b,
+            args.time_ms_b,
+            args.node_limit_b,
+        ),
     )
     try:
         summary = run_matchup(
@@ -237,12 +329,22 @@ def main(argv: Sequence[str] | None = None) -> int:
                 labels[0],
                 depth=args.depth_a,
                 use_alpha_beta=alpha_beta,
+                max_depth=args.max_depth_a,
+                time_limit_seconds=(
+                    args.time_ms_a / 1000 if args.time_ms_a is not None else None
+                ),
+                node_limit=args.node_limit_a,
             ),
             _factory(
                 args.agent_b,
                 labels[1],
                 depth=args.depth_b,
                 use_alpha_beta=alpha_beta,
+                max_depth=args.max_depth_b,
+                time_limit_seconds=(
+                    args.time_ms_b / 1000 if args.time_ms_b is not None else None
+                ),
+                node_limit=args.node_limit_b,
             ),
             games=args.games,
             seed=args.seed,
