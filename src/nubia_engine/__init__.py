@@ -1,7 +1,8 @@
-"""Public API for the NUBIA ordinary-movement rules engine."""
+"""Public API for the NUBIA rules engine."""
 
-from nubia_engine.actions import Action, IllegalActionError
+from nubia_engine.actions import Action, ActionTarget, IllegalActionError
 from nubia_engine.coordinates import ALL_SQUARES, RESOURCE_SQUARES, Square
+from nubia_engine.defense import is_defended_for_gbesele
 from nubia_engine.enums import (
     ActionKind,
     BrainwashAvailability,
@@ -20,6 +21,7 @@ __all__ = [
     "RESOURCE_SQUARES",
     "Action",
     "ActionKind",
+    "ActionTarget",
     "BrainwashAvailability",
     "Empire",
     "GameState",
@@ -31,6 +33,7 @@ __all__ = [
     "Terrain",
     "apply_action",
     "create_initial_state",
+    "is_defended_for_gbesele",
     "legal_actions",
     "legal_actions_from",
 ]

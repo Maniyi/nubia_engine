@@ -47,8 +47,11 @@ class BrainwashAvailability(StrEnum):
 
 
 class ActionKind(StrEnum):
-    """An ordinary action supported by the Milestone 2 engine."""
+    """A turn action supported by the rules engine."""
 
     MOVE = "MOVE"
     CAPTURE = "CAPTURE"
     SWITCH = "SWITCH"
+    GBESELE = "GBESELE"
+    BRAINWASH = "BRAINWASH"
+    REBRAINWASH = "REBRAINWASH"

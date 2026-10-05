@@ -5,13 +5,14 @@ The authoritative game specification is [`docs/NUBIA_RULES.md`](docs/NUBIA_RULES
 with confirmed engine interpretations in
 [`docs/ENGINE_DECISIONS.md`](docs/ENGINE_DECISIONS.md).
 
-## Milestone 2
+## Milestone 3
 
-The engine provides the immutable Milestone 1 domain foundation plus deterministic
-ordinary movement, capture, High Chief switching, Peasant orientation and special
-horizontal movement, Imperion palace movement, and validated immutable state
-transitions. Public action generation is ordered by source square, destination
-square, then action kind.
+The engine provides immutable rules state plus deterministic ordinary movement,
+capture, High Chief switching, Peasant movement, Imperion palace movement and
+validated immutable transitions. It also implements Imperion GBESELE with
+non-recursive ordinary-capture defence and mandatory simultaneous targets, along
+with each Mystic's independent one-use Brainwash and re-brainwashing power.
+Public generation includes ordinary and special actions in stable canonical order.
 
 ## Development setup
 
@@ -35,7 +36,7 @@ python -m mypy src tests
 
 ## Deferred work
 
-GBESELE, Brainwash actions and re-brainwashing, victory and scoring, repetition
-and no-progress draws, terminal-state enforcement, move notation, CLI gameplay,
-AI/search/training, APIs, website integration, persistence, and multiplayer are
-intentionally deferred.
+Victory (including mine victory immediately caused by Brainwash), scoring,
+repetition and no-progress draws, terminal-state enforcement, result models, move
+notation, CLI gameplay, perft, AI/search/training, APIs, website integration,
+persistence, and multiplayer are intentionally deferred to later milestones.

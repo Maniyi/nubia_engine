@@ -1,4 +1,4 @@
-"""Deterministic generation of ordinary NUBIA actions."""
+"""Deterministic generation of ordinary and special NUBIA actions."""
 
 from __future__ import annotations
 
@@ -8,6 +8,7 @@ from nubia_engine.actions import Action
 from nubia_engine.coordinates import ALL_SQUARES, BOARD_SIZE, Square
 from nubia_engine.enums import ActionKind, Empire, PieceType, RowKind
 from nubia_engine.models import GameState, Piece
+from nubia_engine.special_actions import special_actions_for_piece
 
 _ORTHOGONAL: tuple[tuple[int, int], ...] = ((-1, 0), (0, -1), (0, 1), (1, 0))
 _DIAGONAL: tuple[tuple[int, int], ...] = ((-1, -1), (-1, 1), (1, -1), (1, 1))
@@ -24,8 +25,11 @@ _WAR_CHIEF_OFFSETS: tuple[tuple[int, int], ...] = (
 )
 _ACTION_KIND_ORDER = {
     ActionKind.MOVE: 0,
-    ActionKind.CAPTURE: 1,
-    ActionKind.SWITCH: 2,
+    ActionKind.BRAINWASH: 1,
+    ActionKind.REBRAINWASH: 2,
+    ActionKind.CAPTURE: 3,
+    ActionKind.SWITCH: 4,
+    ActionKind.GBESELE: 5,
 }
 
 
@@ -203,16 +207,20 @@ def _actions_for_piece(state: GameState, piece: Piece, source: Square) -> list[A
     return generators[piece.piece_type](state, piece, source)
 
 
-def _sort_key(action: Action) -> tuple[int, int, int]:
+def _sort_key(action: Action) -> tuple[int, int, int, tuple[tuple[int, str], ...]]:
     return (
         action.source.row * BOARD_SIZE + action.source.column,
         action.destination.row * BOARD_SIZE + action.destination.column,
         _ACTION_KIND_ORDER[action.kind],
+        tuple(
+            (target.square.row * BOARD_SIZE + target.square.column, target.piece_id)
+            for target in action.targets
+        ),
     )
 
 
 def legal_actions_from(state: GameState, source: Square) -> tuple[Action, ...]:
-    """Return ordinary actions for the active piece at ``source`` in stable order."""
+    """Return all actions for the active piece at ``source`` in stable order."""
 
     if not isinstance(state, GameState):
         raise TypeError("state must be a GameState")
@@ -221,11 +229,13 @@ def legal_actions_from(state: GameState, source: Square) -> tuple[Action, ...]:
     piece = state.piece_at(source)
     if piece is None or piece.current_empire is not state.side_to_move:
         return ()
-    return tuple(sorted(_actions_for_piece(state, piece, source), key=_sort_key))
+    actions = _actions_for_piece(state, piece, source)
+    actions.extend(special_actions_for_piece(state, piece, source))
+    return tuple(sorted(actions, key=_sort_key))
 
 
 def legal_actions(state: GameState) -> tuple[Action, ...]:
-    """Return every ordinary action for the side to move in stable board order."""
+    """Return every action for the side to move in stable board order."""
 
     if not isinstance(state, GameState):
         raise TypeError("state must be a GameState")

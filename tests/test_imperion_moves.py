@@ -28,8 +28,12 @@ def test_imperion_excludes_opposing_occupied_destination_without_capture() -> No
         Empire.B,
     )
     actions = legal_actions_from(state, source)
+
     assert Square(0, 2) not in {action.destination for action in actions}
-    assert {action.kind for action in actions} == {ActionKind.MOVE}
+
+    action_kinds = {action.kind for action in actions}
+    assert ActionKind.MOVE in action_kinds
+    assert action_kinds <= {ActionKind.MOVE, ActionKind.GBESELE}
 
 
 def test_imperion_outside_own_palace_row_has_no_ordinary_action() -> None:

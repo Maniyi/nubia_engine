@@ -44,6 +44,12 @@ class Piece:
 
         return self.brainwash is BrainwashAvailability.AVAILABLE
 
+    @property
+    def is_converted(self) -> bool:
+        """Whether current allegiance differs from original allegiance."""
+
+        return self.current_empire is not self.original_empire
+
 
 Board: TypeAlias = tuple[Piece | None, ...]
 

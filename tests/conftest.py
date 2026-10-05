@@ -16,18 +16,15 @@ def piece(
     empire: Empire = Empire.A,
     *,
     original_empire: Empire | None = None,
+    brainwash: BrainwashAvailability = BrainwashAvailability.AVAILABLE,
 ) -> Piece:
-    brainwash = (
-        BrainwashAvailability.AVAILABLE
-        if piece_type is PieceType.WEST_AFRICAN_MYSTIC
-        else None
-    )
+    power = brainwash if piece_type is PieceType.WEST_AFRICAN_MYSTIC else None
     return Piece(
         piece_id,
         piece_type,
         empire if original_empire is None else original_empire,
         empire,
-        brainwash,
+        power,
     )
 
 
