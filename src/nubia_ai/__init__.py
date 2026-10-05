@@ -18,7 +18,15 @@ from nubia_ai.evaluation import (
 )
 from nubia_ai.heuristic_agent import HeuristicAgent, ScoredAction
 from nubia_ai.match import MatchResult, run_match
+from nubia_ai.minimax_agent import MinimaxAgent
 from nubia_ai.random_agent import RandomAgent
+from nubia_ai.search import (
+    SearchConfig,
+    SearchInvariantError,
+    SearchResult,
+    SearchStats,
+    search_state,
+)
 
 __all__ = [
     "DEFAULT_WEIGHTS",
@@ -32,12 +40,18 @@ __all__ = [
     "MatchLimitExceededError",
     "MatchResult",
     "MatchupSummary",
+    "MinimaxAgent",
     "NoActionAvailableError",
     "RandomAgent",
     "ScoredAction",
+    "SearchConfig",
+    "SearchInvariantError",
+    "SearchResult",
+    "SearchStats",
     "WrongTurnError",
     "evaluate_state",
     "run_match",
     "run_matchup",
+    "search_state",
     "summarize_matches",
 ]

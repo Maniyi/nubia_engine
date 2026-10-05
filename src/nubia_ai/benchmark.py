@@ -10,7 +10,9 @@ from dataclasses import dataclass
 from nubia_ai.agent import Agent, MatchLimitExceededError
 from nubia_ai.heuristic_agent import HeuristicAgent
 from nubia_ai.match import MatchResult, run_match
+from nubia_ai.minimax_agent import MinimaxAgent
 from nubia_ai.random_agent import RandomAgent
+from nubia_ai.search import SearchConfig
 from nubia_engine import Empire, GameState, Outcome, create_initial_state
 
 AgentFactory = Callable[[Empire, int], Agent]
@@ -143,7 +145,13 @@ def run_matchup(
     )
 
 
-def _factory(kind: str, name: str | None = None) -> AgentFactory:
+def _factory(
+    kind: str,
+    name: str | None = None,
+    *,
+    depth: int = 1,
+    use_alpha_beta: bool = True,
+) -> AgentFactory:
     if kind == "random":
         return lambda empire, seed: RandomAgent(
             empire, seed=seed, name=name or "RandomAgent"
@@ -151,6 +159,11 @@ def _factory(kind: str, name: str | None = None) -> AgentFactory:
     if kind == "heuristic":
         return lambda empire, _seed: HeuristicAgent(
             empire, name=name or "HeuristicAgent"
+        )
+    if kind == "minimax":
+        config = SearchConfig(depth, use_alpha_beta)
+        return lambda empire, _seed: MinimaxAgent(
+            empire, config, name=name or f"MinimaxAgent(depth={depth})"
         )
     raise ValueError(f"unknown agent kind: {kind}")
 
@@ -180,20 +193,57 @@ def main(argv: Sequence[str] | None = None) -> int:
     """Run the noninteractive baseline benchmark CLI."""
 
     parser = argparse.ArgumentParser(description="Benchmark baseline NUBIA agents")
-    parser.add_argument("--agent-a", choices=("random", "heuristic"), default="random")
+    choices = ("random", "heuristic", "minimax")
+    parser.add_argument("--agent-a", choices=choices, default="random")
+    parser.add_argument("--agent-b", choices=choices, default="heuristic")
     parser.add_argument(
-        "--agent-b", choices=("random", "heuristic"), default="heuristic"
+        "--depth-a",
+        type=_positive,
+        default=1,
+        help="search depth for minimax agent A (ignored for other agents)",
+    )
+    parser.add_argument(
+        "--depth-b",
+        type=_positive,
+        default=1,
+        help="search depth for minimax agent B (ignored for other agents)",
+    )
+    parser.add_argument(
+        "--no-alpha-beta",
+        action="store_true",
+        help="use plain minimax for every minimax agent",
     )
     parser.add_argument("--games", type=_positive, default=10)
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--max-plies", type=_positive, default=1000)
     parser.add_argument("--swap-sides", action="store_true")
     args = parser.parse_args(argv)
-    labels = (f"agent-a:{args.agent_a}", f"agent-b:{args.agent_b}")
+    alpha_beta = not args.no_alpha_beta
+
+    def label(side: str, kind: str, depth: int) -> str:
+        base = f"agent-{side}:{kind}"
+        if kind == "minimax":
+            return f"{base}(depth={depth},alpha_beta={alpha_beta})"
+        return base
+
+    labels = (
+        label("a", args.agent_a, args.depth_a),
+        label("b", args.agent_b, args.depth_b),
+    )
     try:
         summary = run_matchup(
-            _factory(args.agent_a, labels[0]),
-            _factory(args.agent_b, labels[1]),
+            _factory(
+                args.agent_a,
+                labels[0],
+                depth=args.depth_a,
+                use_alpha_beta=alpha_beta,
+            ),
+            _factory(
+                args.agent_b,
+                labels[1],
+                depth=args.depth_b,
+                use_alpha_beta=alpha_beta,
+            ),
             games=args.games,
             seed=args.seed,
             max_plies=args.max_plies,
