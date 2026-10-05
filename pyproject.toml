@@ -12,6 +12,9 @@ license = {text = "Proprietary"}
 authors = [{name = "NUBIA"}]
 dependencies = []
 
+[project.scripts]
+nubia = "nubia_engine.cli:main"
+
 [project.optional-dependencies]
 dev = [
     "mypy>=1.10,<2",
@@ -46,4 +49,3 @@ select = ["E", "F", "I", "UP", "B", "SIM", "RUF"]
 python_version = "3.11"
 strict = true
 files = ["src", "tests"]
-

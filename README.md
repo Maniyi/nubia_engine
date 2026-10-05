@@ -5,7 +5,7 @@ The authoritative game specification is [`docs/NUBIA_RULES.md`](docs/NUBIA_RULES
 with confirmed engine interpretations in
 [`docs/ENGINE_DECISIONS.md`](docs/ENGINE_DECISIONS.md).
 
-## Milestone 4
+## Milestone 5
 
 The engine provides immutable rules state plus deterministic ordinary movement,
 capture, High Chief switching, Peasant movement, Imperion palace movement and
@@ -16,6 +16,18 @@ Public generation includes ordinary and special actions in stable canonical orde
 The post-action adjudication layer adds Peasant mine victory, no-Peasant officer
 scoring, identity-independent threefold repetition, the 40-ply no-progress draw,
 immutable global results, and terminal-state enforcement.
+Milestone 5 adds deterministic engine display notation, a portable fixed-view
+board renderer, immutable action replay, perft verification, and a two-human CLI.
+
+Engine display notation is intentionally human-readable output, not a new
+official notation standard and not a parseable serialization format.
+
+Play locally with Empire A or B moving first:
+
+```sh
+python -m nubia_engine --first-player A
+nubia --first-player B
+```
 
 ## Development setup
 
@@ -39,6 +51,6 @@ python -m mypy src tests
 
 ## Deferred work
 
-Move notation, serialization/save files, CLI gameplay, perft, heuristic evaluation,
-AI/search/training, APIs, website integration, persistence, multiplayer, and
-deployment are intentionally deferred to later milestones.
+Notation parsing, serialization/save files, heuristic evaluation, AI/search/training,
+APIs, website integration, persistence, multiplayer, and deployment are intentionally
+deferred to later milestones.
