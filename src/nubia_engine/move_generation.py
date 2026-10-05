@@ -226,6 +226,8 @@ def legal_actions_from(state: GameState, source: Square) -> tuple[Action, ...]:
         raise TypeError("state must be a GameState")
     if not isinstance(source, Square):
         raise TypeError("source must be a Square")
+    if state.result is not None:
+        return ()
     piece = state.piece_at(source)
     if piece is None or piece.current_empire is not state.side_to_move:
         return ()
@@ -239,6 +241,8 @@ def legal_actions(state: GameState) -> tuple[Action, ...]:
 
     if not isinstance(state, GameState):
         raise TypeError("state must be a GameState")
+    if state.result is not None:
+        return ()
     actions = [
         action for source in ALL_SQUARES for action in legal_actions_from(state, source)
     ]

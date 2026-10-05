@@ -12,6 +12,10 @@ class IllegalActionError(ValueError):
     """Raised when an action cannot legally be applied to a game state."""
 
 
+class GameAlreadyOverError(IllegalActionError):
+    """Raised when an action is attempted after a result has been recorded."""
+
+
 @dataclass(frozen=True, slots=True)
 class ActionTarget:
     """Stable square-and-piece identity for a special-action target."""

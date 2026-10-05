@@ -4,11 +4,13 @@ from __future__ import annotations
 
 from dataclasses import replace
 
-from nubia_engine.actions import Action, IllegalActionError
+from nubia_engine.actions import Action, GameAlreadyOverError, IllegalActionError
+from nubia_engine.adjudication import adjudicate
 from nubia_engine.coordinates import BOARD_SIZE
 from nubia_engine.enums import ActionKind, BrainwashAvailability, Empire
 from nubia_engine.models import GameState
 from nubia_engine.move_generation import legal_actions_from
+from nubia_engine.position import position_key, record_position
 
 
 def apply_action(state: GameState, action: Action) -> GameState:
@@ -16,6 +18,8 @@ def apply_action(state: GameState, action: Action) -> GameState:
 
     if not isinstance(state, GameState):
         raise TypeError("state must be a GameState")
+    if state.result is not None:
+        raise GameAlreadyOverError("the game is already over")
     if not isinstance(action, Action):
         raise IllegalActionError("action must be an Action")
     if action not in legal_actions_from(state, action.source):
@@ -63,9 +67,13 @@ def apply_action(state: GameState, action: Action) -> GameState:
         )
         else state.quiet_ply_count + 1
     )
-    return GameState(
+    successor = GameState(
         board=tuple(board),
         side_to_move=next_side,
         quiet_ply_count=quiet_ply_count,
         ply_number=state.ply_number + 1,
     )
+    prior_history = state.position_history or (position_key(state),)
+    history = record_position(prior_history, position_key(successor))
+    successor = replace(successor, position_history=history)
+    return replace(successor, result=adjudicate(successor))

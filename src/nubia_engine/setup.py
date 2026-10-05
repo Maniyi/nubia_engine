@@ -7,6 +7,7 @@ from collections.abc import Iterable
 from nubia_engine.coordinates import BOARD_SIZE, Square
 from nubia_engine.enums import BrainwashAvailability, Empire, PieceType
 from nubia_engine.models import GameState, Piece
+from nubia_engine.position import position_key
 
 _STARTING_PATHS: tuple[tuple[PieceType, str, tuple[int, ...]], ...] = (
     (PieceType.IMPERION, "p", (5,)),
@@ -51,4 +52,9 @@ def create_initial_state(first_player: Empire) -> GameState:
                 raise RuntimeError(f"starting-piece collision at {square}")
             board[index] = piece
 
-    return GameState(board=tuple(board), side_to_move=first_player)
+    state = GameState(board=tuple(board), side_to_move=first_player)
+    return GameState(
+        board=state.board,
+        side_to_move=state.side_to_move,
+        position_history=(position_key(state),),
+    )

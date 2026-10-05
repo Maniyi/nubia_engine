@@ -7,6 +7,8 @@ from typing import TypeAlias
 
 from nubia_engine.coordinates import ALL_SQUARES, Square
 from nubia_engine.enums import BrainwashAvailability, Empire, PieceType
+from nubia_engine.position import PositionKey
+from nubia_engine.results import GameResult
 
 
 @dataclass(frozen=True, slots=True)
@@ -56,12 +58,19 @@ Board: TypeAlias = tuple[Piece | None, ...]
 
 @dataclass(frozen=True, slots=True)
 class GameState:
-    """The immutable Milestone 1 state of a NUBIA game."""
+    """The immutable rules state of a NUBIA game.
+
+    An empty ``position_history`` is the backward-compatible legacy form. Its
+    current position is deterministically seeded immediately before the first
+    transition.
+    """
 
     board: Board
     side_to_move: Empire
     quiet_ply_count: int = 0
     ply_number: int = 0
+    result: GameResult | None = None
+    position_history: tuple[PositionKey, ...] = ()
 
     def __post_init__(self) -> None:
         if not isinstance(self.board, tuple):
@@ -89,6 +98,12 @@ class GameState:
             or self.ply_number < 0
         ):
             raise ValueError("ply_number must be a non-negative integer")
+        if self.result is not None and not isinstance(self.result, GameResult):
+            raise TypeError("result must be a GameResult or None")
+        if not isinstance(self.position_history, tuple) or any(
+            not isinstance(key, PositionKey) for key in self.position_history
+        ):
+            raise TypeError("position_history must be a tuple of PositionKey values")
 
     def piece_at(self, square: Square) -> Piece | None:
         """Return the piece at ``square``, if any."""
