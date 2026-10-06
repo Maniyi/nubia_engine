@@ -5,7 +5,7 @@ The authoritative game specification is [`docs/NUBIA_RULES.md`](docs/NUBIA_RULES
 with confirmed engine interpretations in
 [`docs/ENGINE_DECISIONS.md`](docs/ENGINE_DECISIONS.md).
 
-## Milestone 8
+## Milestone 9
 
 The engine provides immutable rules state plus deterministic ordinary movement,
 capture, High Chief switching, Peasant movement, Imperion palace movement and
@@ -33,6 +33,9 @@ returns the first action in canonical engine order as an explicitly unevaluated
 fallback.
 Dependency direction is strictly `nubia_ai` to `nubia_engine`; the rules engine
 does not know about agents.
+Milestone 9 adds an optional Pygame playground in the separate
+`nubia_playground` package. It depends on the public AI and engine APIs; neither
+existing package imports the playground or Pygame.
 
 Engine display notation is intentionally human-readable output, not a new
 official notation standard and not a parseable serialization format.
@@ -66,6 +69,54 @@ searches are deterministic; wall-clock-limited completed depth can vary with
 machine speed and system load. If both budgets expire at the same cooperative
 check, the node limit is reported first.
 
+## Local AI playground
+
+The playground is a development and inspection UI, not a production interface.
+Install its optional dependency alongside the development tools:
+
+```sh
+python -m pip install -e ".[dev,ui]"
+```
+
+Launch it through either entry point:
+
+```sh
+python -m nubia_playground
+nubia-playground
+```
+
+The setup screen supports Human versus Human, Human versus Agent, and Agent
+versus Agent. Either empire can move first; in Human-versus-Agent mode the human
+can control either side. Agent choices are Random (with a seed), Heuristic,
+fixed-depth Minimax, and Iterative Minimax with a maximum depth plus either a
+node or millisecond budget. Defaults are intentionally conservative.
+
+During play, click one of the current empire's pieces and then a highlighted
+destination. Clicking the selected square or pressing Escape clears the
+selection. When multiple actions share a destination, choose the exact action
+in the side panel. GBESELE is confirmed there with its complete engine-provided
+target set; Brainwash and re-brainwashing choices identify their target and
+resulting allegiance. The board uses the documented fixed orientation with
+Empire B at the top and Empire A at the bottom.
+
+Pieces use the supplied NUBIA icons by default. Use the visible **Display**
+control during a game to switch freely between Icons and the original Letters;
+this changes presentation only, never game state. Both empires' Peasants share
+one Peasant icon. If an icon cannot be loaded, that piece falls back to its
+letter and the side panel reports the problem. The artwork has no rules meaning.
+
+Agent-versus-Agent games begin paused. Use Resume/Pause for automatic play and
+Step to apply exactly one action while paused. Restart keeps the same setup;
+Setup returns to configuration; Quit or the window close control exits. Status,
+controller assignments, search configuration, move history, latest action,
+quiet-ply count, and terminal results remain visible during a game.
+
+Current limitations are deliberate: there are no saved games, undo/redo,
+network play, animations, audio, additional art assets, or production-grade
+accessibility controls. Search telemetry is not displayed because the shared
+Agent protocol returns only an action. The playground is optional and is not
+needed to import or use `nubia_engine` or `nubia_ai`.
+
 ## Development setup
 
 Python 3.11 or later is required.
@@ -80,7 +131,7 @@ Run the development checks with:
 
 ```sh
 python -m pytest
-python -m pytest --cov=nubia_engine --cov=nubia_ai --cov-report=term-missing
+python -m pytest --cov=nubia_engine --cov=nubia_ai --cov=nubia_playground --cov-report=term-missing
 python -m ruff check .
 python -m ruff format --check .
 python -m mypy src tests
@@ -91,5 +142,5 @@ python -m mypy src tests
 Notation parsing, serialization/save files, transposition tables,
 repetition-aware cache keys, move ordering, Zobrist hashing, quiescence search,
 aspiration windows, parallel search, MCTS, self-play or reinforcement learning,
-neural networks, PyTorch/GPU training, human-versus-AI or graphical UI, APIs,
-website integration, persistence, multiplayer, and deployment are deferred.
+neural networks, PyTorch/GPU training, APIs, website integration, persistence,
+multiplayer, production UI work, and deployment are deferred.

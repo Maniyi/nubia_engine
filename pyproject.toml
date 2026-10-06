@@ -15,6 +15,7 @@ dependencies = []
 [project.scripts]
 nubia = "nubia_engine.cli:main"
 nubia-ai = "nubia_ai.benchmark:main"
+nubia-playground = "nubia_playground.app:main"
 
 [project.optional-dependencies]
 dev = [
@@ -23,9 +24,15 @@ dev = [
     "pytest-cov>=5,<8",
     "ruff>=0.6,<1",
 ]
+ui = [
+    "pygame>=2.6,<3",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+nubia_playground = ["assets/pieces/*.png"]
 
 [tool.pytest.ini_options]
 addopts = "-ra"
@@ -33,7 +40,7 @@ testpaths = ["tests"]
 
 [tool.coverage.run]
 branch = true
-source = ["nubia_engine", "nubia_ai"]
+source = ["nubia_engine", "nubia_ai", "nubia_playground"]
 
 [tool.coverage.report]
 show_missing = true
