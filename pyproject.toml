@@ -17,19 +17,26 @@ nubia = "nubia_engine.cli:main"
 nubia-ai = "nubia_ai.benchmark:main"
 nubia-playground = "nubia_playground.app:main"
 nubia-training = "nubia_training.cli:main"
+nubia-neural = "nubia_training.neural.cli:main"
 
 [project.optional-dependencies]
 dev = [
     "mypy>=1.10,<2",
+    "numpy>=1.26,<3",
     "pytest>=8,<9",
     "pytest-cov>=5,<8",
     "ruff>=0.6,<1",
+    "torch>=2.2,<3",
 ]
 ui = [
     "pygame>=2.6,<3",
 ]
 training = [
     "numpy>=1.26,<3",
+]
+neural = [
+    "numpy>=1.26,<3",
+    "torch>=2.2,<3",
 ]
 
 [tool.setuptools.packages.find]

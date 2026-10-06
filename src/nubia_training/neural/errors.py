@@ -1,0 +1,25 @@
+"""Focused errors raised by the optional neural-training package."""
+
+
+class NeuralError(Exception):
+    """Base class for expected neural subsystem failures."""
+
+
+class NeuralConfigurationError(NeuralError, ValueError):
+    """Raised when a model or training configuration is invalid."""
+
+
+class NeuralInputError(NeuralError, ValueError):
+    """Raised when tensors do not satisfy a public neural contract."""
+
+
+class DeviceUnavailableError(NeuralError, RuntimeError):
+    """Raised when an explicitly requested accelerator is unavailable."""
+
+
+class CheckpointError(NeuralError):
+    """Raised when checkpoint integrity or compatibility validation fails."""
+
+
+class NonFiniteTrainingError(NeuralError, RuntimeError):
+    """Raised when a loss or gradient becomes non-finite."""

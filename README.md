@@ -319,6 +319,83 @@ The console command `nubia-training` provides the same subcommands. A small
 weak-agent validation corpus proves integrity and reproducibility; it is not a
 large, diverse, strategically strong, or production-ready training dataset.
 
+## Small policy-value neural network
+
+Milestone 12 adds an optional PyTorch subpackage without changing the NumPy-only
+training tools. Install the neural and development extras with:
+
+```sh
+python -m pip install -e ".[dev,training,neural]"
+```
+
+Importing `nubia_training` does not import PyTorch; PyTorch is loaded only by
+`nubia_training.neural`. The version-1 model consumes `float32` spatial tensors
+of shape `[batch,21,10,10]` and global features of shape `[batch,5]`. Global
+features are projected and broadcast into the convolutional trunk. The default
+trunk has 64 channels, four GroupNorm residual blocks, 16-dimensional policy
+embeddings, and a 128-unit value hidden layer. The value output is one `tanh`
+scalar in `[-1,1]` per example, from the stored perspective: `+1` win, `0` draw,
+and `-1` loss.
+
+The policy head does not flatten the board into a massive dense output layer.
+For every action kind and square, separate learned source and destination
+embeddings are produced by 1x1 convolutions. Their scaled dot products form
+`[batch,6,100,100]`, then flatten exactly as:
+
+```text
+kind_offset + normalized_source * 100 + normalized_destination
+```
+
+The main forward method returns raw `[batch,60000]` logits. Legal masking is a
+separate stable operation: illegal logits become negative infinity before the
+legal softmax, receive exactly zero probability, and cannot affect the
+normalizer. Sparse cross-entropy gathers only stored target indices while its
+normalizer covers only legal actions; no dense 60,000-entry target is created.
+The value objective is mean squared error, with explicit policy and value
+weights.
+
+`ShardDataset` validates the manifest and all shards before training, preserves
+manifest order, loads with `allow_pickle=False`, and retains only a bounded
+shard cache. It materializes a dense legal mask only for the current batch.
+Sparse policy targets, legal-aligned repetition counts, perspective, game ID,
+ply index, and agent identity remain available in the batch API.
+
+Inspect the default architecture or run a deliberately tiny CPU smoke job:
+
+```sh
+python -m nubia_training.neural inspect-model
+python -m nubia_training.neural train \
+  artifacts/nubia_training/dataset /tmp/nubia-neural-smoke \
+  --device cpu --epochs 1 --max-steps 2 --batch-size 2 \
+  --trunk-channels 8 --residual-blocks 1 \
+  --policy-embedding-dim 2 --value-hidden-dim 8 \
+  --normalization-groups 2
+python -m nubia_training.neural inspect-checkpoint \
+  /tmp/nubia-neural-smoke/checkpoint.pt
+```
+
+The equivalent console command is `nubia-neural`. Devices are `cpu`, `mps`,
+`cuda`, and `auto`; `auto` prefers CUDA, then MPS, then CPU. CPU is the required
+Mac development path. A later Windows machine may explicitly select CUDA, but
+this milestone contains no CUDA-specific kernels, mixed precision, or GPU
+requirement. The CLI defaults to at most ten optimizer steps, so an explicit
+configuration is required for anything beyond a bounded local check.
+
+Checkpoints store complete model and training configurations, all representation
+and schema versions, CPU model tensors, optional AdamW state, dataset identity
+and fingerprint, progress counters, seed, and latest losses. A canonical JSON
+sidecar records the metadata and SHA-256 of the checkpoint. Loading verifies the
+checksum before using PyTorch's safe `weights_only` mode and rejects version,
+architecture, representation, or requested-dataset mismatches. Existing
+checkpoint paths are never overwritten.
+
+This is an untrained model architecture. A decreasing smoke-test loss only
+proves that forward, backward, optimizer, checkpoint, and resume paths work; it
+is not evidence of game-playing strength. No learned agent, production
+training, MCTS, neural-guided self-play, or model-versus-agent evaluation exists
+yet. Parameter and batch-memory inspection estimates exclude framework/runtime
+overhead and some intermediate activations.
+
 ## Development setup
 
 Python 3.11 or later is required.
@@ -341,8 +418,8 @@ python -m mypy src tests
 
 ## Deferred work
 
-Notation parsing, model training, transposition tables,
+Notation parsing, sustained model training, transposition tables,
 repetition-aware cache keys, move ordering, Zobrist hashing, quiescence search,
 aspiration windows, parallel search, MCTS, self-play or reinforcement learning,
-neural networks, PyTorch/GPU training, APIs, website integration, persistence,
+production PyTorch/GPU training, APIs, website integration, persistence,
 multiplayer, production UI work, and deployment are deferred.
