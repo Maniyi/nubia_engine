@@ -16,6 +16,7 @@ dependencies = []
 nubia = "nubia_engine.cli:main"
 nubia-ai = "nubia_ai.benchmark:main"
 nubia-playground = "nubia_playground.app:main"
+nubia-training = "nubia_training.cli:main"
 
 [project.optional-dependencies]
 dev = [

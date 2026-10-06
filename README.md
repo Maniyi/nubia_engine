@@ -250,6 +250,75 @@ use 4,109,440 bytes (3.92 MiB), 8,218,880 bytes (7.84 MiB), and 16,437,760 bytes
 its complete encoded arrays occupy 128,500 bytes including its 80-byte legal
 index array.
 
+## Persistent game records and training datasets
+
+Milestone 11 adds a deterministic local data pipeline; no external raw-game
+dataset is required. Generated files belong under `artifacts/nubia_training/`
+(which is ignored precisely by Git) or another explicitly supplied directory.
+Nothing is generated during installation or import.
+
+Each game is stored as canonical UTF-8 JSON at `games/<game-id>.json`. The
+record contains independent schema versions, the standard setup and first
+player, public agent configurations and deterministic random seeds, zero-based
+ply records, genuine engine terminal data or a stable abort reason, and encoded
+state fingerprints. An action's fixed Milestone 10 index is authoritative;
+notation is diagnostic. Canonical JSON sorts keys, uses compact separators and
+one trailing LF. SHA-256 covers canonical content without the fingerprint or
+ID; the game ID is the first 24 hexadecimal characters of that digest. Writes
+are atomic and identical rewrites are no-ops, while conflicts fail.
+
+Generation supports Random, Heuristic, Minimax, and Iterative Minimax agents.
+Random agents receive explicit per-game seeds. Deterministic agents retain
+engine-order tie breaking. Iterative generation accepts node budgets only:
+wall-clock limits are deliberately rejected because their completed depth can
+vary by machine and load. Series generation can alternate the first player and
+swap participant sides. Safety limits and agent failures create aborted games,
+never fabricated draws.
+
+Replay reconstructs the standard initial state and resolves every stored action
+index against current engine-generated legal actions. It checks actor, action
+kind, notation, pre/post fingerprints, terminal result, reasons, officer totals,
+ply count, and final fingerprint. Completed games convert to one example per
+pre-action state. The acting empire is the perspective, the selected action is
+a one-hot behavioral-cloning policy, and the value is +1/0/-1 for eventual
+win/draw/loss. These choices are observations of the generating agents, not
+optimal or expert policies. Aborted games contribute no examples.
+
+Datasets use deterministic compressed NPZ shards and a canonical
+`manifest.json`. Shards store `float32` spatial `[N,21,10,10]` and global
+`[N,5]` arrays; ragged legal and policy `uint16` indices with `int64` offsets;
+legal-aligned `uint8` repetition counts; `float32` policy probabilities and
+values; Unicode perspectives, source game IDs, agent identities, and SHA-256
+fingerprints; plus all representation/schema versions. They contain no object
+arrays, dense 60,000-entry masks, dense repetition vectors, or Pickle. The
+manifest records ordered source games and shards, SHA-256 file checksums,
+counts, outcomes, agents, ply statistics, build configuration, and skipped
+abort reasons. Validation verifies the manifest digest, versions, source games
+when supplied, every checksum, shard structure, counts, and reconstructed
+example fingerprints.
+
+A complete small local workflow is:
+
+```sh
+python -m nubia_training generate-games \
+  --output-dir artifacts/nubia_training --games 2 --base-seed 42 \
+  --first-player alternate --swap-sides --agent-a random --agent-b heuristic
+python -m nubia_training validate-games \
+  --games-dir artifacts/nubia_training/games
+python -m nubia_training build-dataset \
+  --games-dir artifacts/nubia_training/games \
+  --output-dir artifacts/nubia_training/dataset --shard-size 256
+python -m nubia_training validate-dataset \
+  --dataset-dir artifacts/nubia_training/dataset \
+  --games-dir artifacts/nubia_training/games
+python -m nubia_training inspect-dataset \
+  --dataset-dir artifacts/nubia_training/dataset
+```
+
+The console command `nubia-training` provides the same subcommands. A small
+weak-agent validation corpus proves integrity and reproducibility; it is not a
+large, diverse, strategically strong, or production-ready training dataset.
+
 ## Development setup
 
 Python 3.11 or later is required.
@@ -272,8 +341,7 @@ python -m mypy src tests
 
 ## Deferred work
 
-Notation parsing, serialization/save files, persistent training datasets,
-training-data generation, model training, transposition tables,
+Notation parsing, model training, transposition tables,
 repetition-aware cache keys, move ordering, Zobrist hashing, quiescence search,
 aspiration windows, parallel search, MCTS, self-play or reinforcement learning,
 neural networks, PyTorch/GPU training, APIs, website integration, persistence,

@@ -39,3 +39,31 @@ class InvalidPolicyTargetError(RepresentationError):
 
 class VersionMismatchError(RepresentationError):
     """Raised when representation component versions are incompatible."""
+
+
+class TrainingDataError(ValueError):
+    """Base class for expected record and dataset pipeline failures."""
+
+
+class SchemaVersionError(TrainingDataError):
+    """Raised when persisted data uses an unsupported schema version."""
+
+
+class RecordValidationError(TrainingDataError):
+    """Raised when a raw game record is malformed or inconsistent."""
+
+
+class RecordIntegrityError(TrainingDataError):
+    """Raised when canonical game content or storage conflicts."""
+
+
+class ReplayValidationError(TrainingDataError):
+    """Raised when authoritative replay disagrees with a raw record."""
+
+
+class DatasetValidationError(TrainingDataError):
+    """Raised when a shard or manifest fails integrity validation."""
+
+
+class AgentSpecError(TrainingDataError):
+    """Raised for unsupported or non-reproducible generation agents."""
