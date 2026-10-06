@@ -27,6 +27,9 @@ dev = [
 ui = [
     "pygame>=2.6,<3",
 ]
+training = [
+    "numpy>=1.26,<3",
+]
 
 [tool.setuptools.packages.find]
 where = ["src"]
@@ -40,7 +43,7 @@ testpaths = ["tests"]
 
 [tool.coverage.run]
 branch = true
-source = ["nubia_engine", "nubia_ai", "nubia_playground"]
+source = ["nubia_engine", "nubia_ai", "nubia_playground", "nubia_training"]
 
 [tool.coverage.report]
 show_missing = true

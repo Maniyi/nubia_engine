@@ -117,6 +117,139 @@ accessibility controls. Search telemetry is not displayed because the shared
 Agent protocol returns only an action. The playground is optional and is not
 needed to import or use `nubia_engine` or `nubia_ai`.
 
+## Machine-learning representation foundation
+
+Milestone 10 adds the optional `nubia_training` package. It converts immutable
+engine states and legal actions into deterministic, versioned NumPy structures;
+it does not include a model, training loop, dataset writer, self-play system, or
+learned agent. Its dependency direction is strictly `nubia_training` to
+`nubia_engine`. The engine, classical AI, and playground do not import the
+training package or NumPy.
+
+Install the training dependency with the development tools:
+
+```sh
+python -m pip install -e ".[dev,training]"
+```
+
+`STATE_ENCODING_VERSION`, `ACTION_SPACE_VERSION`, and
+`TRAINING_EXAMPLE_VERSION` are independent compatibility contracts, all at
+version 1. `STATE_ENCODING_SPEC` and `ACTION_SPACE_SPEC` expose immutable
+metadata rather than deriving compatibility from the package version.
+
+### State observation
+
+`encode_state(state, perspective=...)` defaults to the side to move. Empire A
+uses the engine's canonical fixed board; Empire B is rotated 180 degrees, using
+`(row, column) -> (9 - row, 9 - column)`. Current and original allegiance are
+then labelled relative to the requested perspective as self or opponent.
+
+The `float32` spatial tensor has shape `(21, 10, 10)` and this exact channel
+order:
+
+```text
+self_imperion
+self_queen
+self_north_central_war_chief
+self_east_african_high_chief
+self_south_african_advisor
+self_west_african_mystic
+self_peasant
+opponent_imperion
+opponent_queen
+opponent_north_central_war_chief
+opponent_east_african_high_chief
+opponent_south_african_advisor
+opponent_west_african_mystic
+opponent_peasant
+original_self
+original_opponent
+mystic_power_available
+land
+sea
+self_resource
+opponent_resource
+```
+
+The first 14 planes encode one-hot piece type and current allegiance. The next
+two mark every piece's original allegiance, the Mystic plane marks surviving
+Mystics whose Brainwash power is available, and the last four describe terrain
+and mine ownership. Piece identifiers, notation, artwork, and display data are
+excluded.
+
+The read-only `float32` global vector has this exact order and formulas:
+
+```text
+side_to_move_is_self                 1 if side_to_move == perspective, else 0
+quiet_ply_progress                   min(quiet_ply_count, 40) / 40
+current_repetition_count_normalized  min(current-position occurrences, 3) / 3
+is_terminal                          1 if a result is present, else 0
+terminal_outcome_for_self            +1 win, -1 loss, 0 draw or non-terminal
+```
+
+The terminal flag disambiguates a draw from a non-terminal state. Encoded arrays
+are copied into immutable storage. A SHA-256 representation fingerprint covers
+the versions, perspective, shapes, dtypes, and bytes; it is an integrity aid,
+not an engine position key.
+
+### Actions, masks, and repetition context
+
+The version-1 action-kind order is `MOVE`, `CAPTURE`, `SWITCH`, `GBESELE`,
+`BRAINWASH`, `REBRAINWASH`. Each kind owns a block of 10,000 entries and:
+
+```text
+index = kind_offset + normalized_source_square * 100 + normalized_destination_square
+```
+
+The offsets are `0`, `10000`, `20000`, `30000`, `40000`, and `50000`, so the
+fixed action space contains 60,000 entries. Squares use the same perspective
+rotation as the tensor. Piece IDs, captured IDs, and special-action target IDs
+are not indexed. `index_to_action` searches the current engine-generated legal
+actions and returns the exact action with its current captured ID or complete
+GBESELE/Brainwash target tuple. Missing, stale, forged, ambiguous, and colliding
+actions fail explicitly.
+
+The dense legal mask is a read-only 60,000-element Boolean array. Legal indices
+are also retained as read-only `uint16` values in engine action order. Terminal
+states have an empty mask. The action-aligned repetition vector is read-only
+`uint8`: a legal slot contains the resulting position's prior occurrence count,
+clipped to 0, 1, or 2, and illegal slots contain zero. A value of 2 therefore
+marks an action that would ordinarily create a third occurrence. The engine's
+post-action adjudication still controls higher-priority mine victory and officer
+scoring.
+
+This immediate feature cannot encode the unbounded repetition map. Deeper tree
+search must carry the complete authoritative `GameState.position_history`; the
+fixed observation is not a substitute for engine state.
+
+### Training examples and memory
+
+`TrainingExample` stores an immutable `EncodedState`, a sparse `uint16` list of
+unique legal policy indices, matching read-only `float32` probabilities, and a
+finite value in `[-1, 1]`. Sparse policy mass must be non-negative, finite, and
+sum to 1 within `1e-6`. Multi-action distributions are supported. Values are
+always from the stored perspective: `+1` win, `0` draw, and `-1` loss. A dense
+read-only `float32` policy is materialized only by `dense_policy()`.
+
+The fixed per-observation storage is:
+
+```text
+spatial tensor       (21, 10, 10) float32    8,400 bytes
+global vector        (5,) float32               20 bytes
+legal mask           (60,000,) bool          60,000 bytes
+repetition vector    (60,000,) uint8         60,000 bytes
+fixed total                                  128,420 bytes
+legal indices        (N,) uint16                 2N bytes
+dense policy         (60,000,) float32       240,000 bytes (only on request)
+```
+
+Excluding Python object overhead, future model activations, sparse legal-index
+storage, and optional dense policies, batches of 32, 64, and 128 observations
+use 4,109,440 bytes (3.92 MiB), 8,218,880 bytes (7.84 MiB), and 16,437,760 bytes
+(15.68 MiB), respectively. The standard initial state has 40 legal actions, so
+its complete encoded arrays occupy 128,500 bytes including its 80-byte legal
+index array.
+
 ## Development setup
 
 Python 3.11 or later is required.
@@ -139,7 +272,8 @@ python -m mypy src tests
 
 ## Deferred work
 
-Notation parsing, serialization/save files, transposition tables,
+Notation parsing, serialization/save files, persistent training datasets,
+training-data generation, model training, transposition tables,
 repetition-aware cache keys, move ordering, Zobrist hashing, quiescence search,
 aspiration windows, parallel search, MCTS, self-play or reinforcement learning,
 neural networks, PyTorch/GPU training, APIs, website integration, persistence,
