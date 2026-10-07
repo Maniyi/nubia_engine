@@ -53,6 +53,8 @@ class SetupScreen:
     budget_kind: dict[Empire, str] = field(
         default_factory=lambda: {Empire.A: "Nodes", Empire.B: "Nodes"}
     )
+    checkpoint: str = ""
+    device: str = "auto"
     values: dict[str, str] = field(
         default_factory=lambda: {
             "seed_A": "0",
@@ -63,6 +65,7 @@ class SetupScreen:
             "max_B": "2",
             "budget_A": "2000",
             "budget_B": "2000",
+            "simulations": "16",
             "delay": "500",
         }
     )
@@ -96,6 +99,11 @@ class SetupScreen:
                     if kind is AgentKind.ITERATIVE
                     else 2_000
                 )
+                simulations = (
+                    int(self.values["simulations"])
+                    if kind is AgentKind.NEURAL_MCTS
+                    else 16
+                )
                 settings[empire] = AgentSettings(
                     kind=kind,
                     seed=seed,
@@ -113,6 +121,9 @@ class SetupScreen:
                         and self.budget_kind[empire] == "Time (ms)"
                         else None
                     ),
+                    checkpoint=self.checkpoint or None,
+                    device=self.device,
+                    simulations=simulations,
                 )
             return SetupConfig(
                 self.mode,
@@ -189,7 +200,14 @@ class PlaygroundApp:
         if field_name is None:
             return
         if event.key == pygame.K_BACKSPACE:
-            self.setup.values[field_name] = self.setup.values[field_name][:-1]
+            if field_name == "checkpoint":
+                self.setup.checkpoint = self.setup.checkpoint[:-1]
+            else:
+                self.setup.values[field_name] = self.setup.values[field_name][:-1]
+        elif (
+            field_name == "checkpoint" and event.unicode and event.unicode.isprintable()
+        ):
+            self.setup.checkpoint += event.unicode
         elif event.unicode and (event.unicode.isdigit() or event.unicode == "-"):
             self.setup.values[field_name] += event.unicode
 
@@ -284,7 +302,21 @@ class PlaygroundApp:
                     lambda side=empire: self._toggle_budget(side),
                 )
                 self._field("Budget", f"budget_{empire.value}", 802, y)
+            elif kind in {AgentKind.NEURAL_POLICY, AgentKind.NEURAL_MCTS}:
+                self._button(
+                    f"Device: {self.setup.device}",
+                    (448, y - 6, 130, 34),
+                    self._cycle_device,
+                )
+                if kind is AgentKind.NEURAL_MCTS:
+                    self._field("Simulations", "simulations", 600, y)
             y += 62
+        if any(
+            kind in {AgentKind.NEURAL_POLICY, AgentKind.NEURAL_MCTS}
+            for kind in self.setup.kinds.values()
+        ):
+            self._text_field("Checkpoint", "checkpoint", 52, y)
+            y += 52
         self._field("Auto delay (ms)", "delay", 52, max(y + 15, 370))
         self._button("Start game", (52, max(y + 75, 430), 190, 44), self._start)
         self._button("Quit", (260, max(y + 75, 430), 110, 44), self._quit)
@@ -309,6 +341,27 @@ class PlaygroundApp:
             pygame.draw.rect(
                 self.screen, theme.SELECTED, pygame.Rect(rect), 2, border_radius=5
             )
+
+    def _text_field(self, label: str, name: str, x: int, y: int) -> None:
+        self.screen.blit(self.small_font.render(label, True, theme.MUTED), (x, y))
+        rect = (x + 98, y - 7, 650, 34)
+        value = self.setup.checkpoint if name == "checkpoint" else ""
+        display = value if len(value) <= 72 else f"…{value[-71:]}"
+        self._button(
+            display or "Click, then type a checkpoint path",
+            rect,
+            lambda: setattr(self.setup, "active_field", name),
+        )
+        if self.setup.active_field == name:
+            pygame.draw.rect(
+                self.screen, theme.SELECTED, pygame.Rect(rect), 2, border_radius=5
+            )
+
+    def _cycle_device(self) -> None:
+        devices = ("auto", "cpu", "cuda", "mps")
+        self.setup.device = devices[
+            (devices.index(self.setup.device) + 1) % len(devices)
+        ]
 
     def _toggle_budget(self, empire: Empire) -> None:
         self.setup.budget_kind[empire] = (
@@ -384,7 +437,28 @@ class PlaygroundApp:
                     self.small_font,
                     color=theme.MUTED,
                 )
+                runtime = controller.agent_runtime.get(empire)
+                if runtime is not None:
+                    identity = runtime.source_identity or runtime.checkpoint_sha256[:12]
+                    y = draw_lines(
+                        self.screen,
+                        [
+                            f"{empire.value} model: {runtime.checkpoint_name} · "
+                            f"{identity} · {runtime.resolved_device}"
+                        ],
+                        (panel_x + 14, y),
+                        self.small_font,
+                        color=theme.MUTED,
+                    )
         y += 8
+        if controller.last_agent_diagnostics:
+            y = draw_lines(
+                self.screen,
+                [controller.last_agent_diagnostics],
+                (panel_x + 14, y),
+                self.small_font,
+                color=theme.MUTED,
+            )
         if controller.error:
             y = draw_lines(
                 self.screen,
@@ -575,15 +649,86 @@ def build_parser() -> argparse.ArgumentParser:
         action="store_true",
         help="initialize and cleanly close after two frames (for headless validation)",
     )
+    parser.add_argument(
+        "--opponent",
+        choices=(
+            "random",
+            "heuristic",
+            "minimax",
+            "iterative-minimax",
+            "neural-policy",
+            "neural-mcts",
+        ),
+        help="preselect the Human-vs-Agent opponent",
+    )
+    parser.add_argument("--checkpoint", help="neural checkpoint path")
+    parser.add_argument(
+        "--device",
+        choices=("auto", "cpu", "cuda", "mps"),
+        help="neural inference device (default: auto)",
+    )
+    parser.add_argument(
+        "--simulations",
+        type=int,
+        help="Neural MCTS simulations per move (default: 16)",
+    )
     return parser
 
 
+def setup_from_args(
+    parser: argparse.ArgumentParser, args: argparse.Namespace
+) -> SetupScreen:
+    """Create a setup-screen state from optional CLI preconfiguration."""
+
+    setup = SetupScreen()
+    kinds = {
+        "random": AgentKind.RANDOM,
+        "heuristic": AgentKind.HEURISTIC,
+        "minimax": AgentKind.MINIMAX,
+        "iterative-minimax": AgentKind.ITERATIVE,
+        "neural-policy": AgentKind.NEURAL_POLICY,
+        "neural-mcts": AgentKind.NEURAL_MCTS,
+    }
+    kind = None if args.opponent is None else kinds[args.opponent]
+    neural = kind in {AgentKind.NEURAL_POLICY, AgentKind.NEURAL_MCTS}
+    if neural and not args.checkpoint:
+        parser.error("--checkpoint is required for a neural opponent")
+    if (
+        kind is not None
+        and not neural
+        and any(
+            value is not None
+            for value in (args.checkpoint, args.device, args.simulations)
+        )
+    ):
+        parser.error(
+            "--checkpoint, --device, and --simulations require a neural opponent"
+        )
+    if args.simulations is not None and args.simulations < 1:
+        parser.error("--simulations must be a positive integer")
+    if kind is AgentKind.NEURAL_POLICY and args.simulations is not None:
+        parser.error("--simulations applies only to --opponent neural-mcts")
+    if kind is not None:
+        setup.kinds[Empire.B] = kind
+    if args.checkpoint is not None:
+        setup.checkpoint = args.checkpoint
+    if args.device is not None:
+        setup.device = args.device
+    if args.simulations is not None:
+        setup.values["simulations"] = str(args.simulations)
+    return setup
+
+
 def main(argv: list[str] | None = None) -> int:
-    args = build_parser().parse_args(argv)
+    parser = build_parser()
+    args = parser.parse_args(argv)
+    setup = setup_from_args(parser, args)
     if pygame is None:
         print(
             'Pygame is required; install with: pip install -e ".[dev,ui]"',
             file=sys.stderr,
         )
         return 1
-    return PlaygroundApp().run(max_frames=2 if args.smoke_test else None)
+    app = PlaygroundApp()
+    app.setup = setup
+    return app.run(max_frames=2 if args.smoke_test else None)

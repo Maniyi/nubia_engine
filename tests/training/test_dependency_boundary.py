@@ -46,8 +46,8 @@ def test_only_generation_specific_training_code_imports_ai() -> None:
     assert ai_files == {"generation.py"}
 
 
-def test_existing_packages_do_not_depend_on_training() -> None:
-    for package in ("nubia_engine", "nubia_ai", "nubia_playground"):
+def test_engine_and_classical_ai_do_not_depend_on_training() -> None:
+    for package in ("nubia_engine", "nubia_ai"):
         assert all(
             not name.startswith("nubia_training")
             for name in _imports(Path("src") / package)

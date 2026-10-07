@@ -4,6 +4,8 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from enum import StrEnum
+from pathlib import Path
+from typing import Any
 
 from nubia_ai import (
     Agent,
@@ -42,6 +44,8 @@ class AgentKind(StrEnum):
     HEURISTIC = "Heuristic"
     MINIMAX = "Minimax"
     ITERATIVE = "Iterative Minimax"
+    NEURAL_POLICY = "Neural Policy"
+    NEURAL_MCTS = "Neural MCTS"
 
 
 class SetupValidationError(ValueError):
@@ -58,6 +62,9 @@ class AgentSettings:
     max_depth: int = 2
     node_limit: int | None = 2_000
     time_limit_ms: int | None = None
+    checkpoint: str | None = None
+    device: str = "auto"
+    simulations: int = 16
 
     def __post_init__(self) -> None:
         if not isinstance(self.kind, AgentKind):
@@ -78,6 +85,9 @@ class AgentSettings:
                 raise SetupValidationError(
                     "iterative search needs exactly one node or time budget"
                 )
+        if self.device not in {"cpu", "cuda", "mps", "auto"}:
+            raise SetupValidationError("device must be one of: cpu, cuda, mps, auto")
+        self._positive_int("MCTS simulations", self.simulations)
 
     @staticmethod
     def _positive_int(label: str, value: object) -> None:
@@ -93,6 +103,14 @@ class AgentSettings:
             return "Heuristic (1 ply)"
         if self.kind is AgentKind.MINIMAX:
             return f"Minimax (depth {self.depth})"
+        if self.kind in {AgentKind.NEURAL_POLICY, AgentKind.NEURAL_MCTS}:
+            checkpoint = Path(self.checkpoint or "").name
+            suffix = (
+                f", {self.simulations} simulations"
+                if self.kind is AgentKind.NEURAL_MCTS
+                else ""
+            )
+            return f"{self.kind.value} ({checkpoint}, {self.device}{suffix})"
         budget = (
             f"{self.node_limit} nodes"
             if self.node_limit is not None
@@ -131,27 +149,104 @@ class SetupConfig:
             raise SetupValidationError("move delay must be 50-10000 ms")
 
 
-def create_agent(empire: Empire, settings: AgentSettings) -> Agent:
+@dataclass(frozen=True, slots=True)
+class AgentRuntimeInfo:
+    """Loaded neural identity and device details for status display."""
+
+    checkpoint_name: str
+    checkpoint_sha256: str
+    resolved_device: str
+    source_identity: str | None = None
+
+
+def _create_neural_agent(
+    empire: Empire, settings: AgentSettings
+) -> tuple[Agent, AgentRuntimeInfo]:
+    """Load neural support only when a neural opponent is requested."""
+
+    if not isinstance(settings.checkpoint, str) or not settings.checkpoint.strip():
+        raise SetupValidationError("a checkpoint is required for neural agents")
+    checkpoint = Path(settings.checkpoint).expanduser()
+    if not checkpoint.is_file():
+        raise SetupValidationError(f"checkpoint does not exist: {checkpoint}")
+    try:
+        from nubia_training.neural.agents import MCTSAgent, NeuralPolicyAgent
+        from nubia_training.neural.checkpoints import load_checkpoint
+        from nubia_training.neural.evaluator import NeuralPositionEvaluator
+        from nubia_training.neural.mcts import MCTSConfig
+
+        loaded = load_checkpoint(checkpoint)
+        evaluator = NeuralPositionEvaluator(loaded.model, device=settings.device)
+        if settings.kind is AgentKind.NEURAL_POLICY:
+            agent: Agent = NeuralPolicyAgent(
+                empire,
+                evaluator,
+                temperature=0.0,
+                name="Neural Policy",
+            )
+        else:
+            agent = MCTSAgent(
+                empire,
+                evaluator,
+                MCTSConfig(
+                    simulations=settings.simulations,
+                    temperature=0.0,
+                    root_noise_enabled=False,
+                ),
+                name="Neural MCTS",
+            )
+    except Exception as error:
+        raise SetupValidationError(f"could not load neural agent: {error}") from error
+    provenance = loaded.metadata.get("provenance")
+    source_identity = None
+    if isinstance(provenance, dict):
+        for key in ("candidate_id", "source_checkpoint_sha256", "source_checkpoint"):
+            value = provenance.get(key)
+            if isinstance(value, str) and value:
+                source_identity = value
+                break
+    return agent, AgentRuntimeInfo(
+        checkpoint.name,
+        loaded.sha256,
+        str(evaluator.device),
+        source_identity,
+    )
+
+
+def _create_agent_with_info(
+    empire: Empire, settings: AgentSettings
+) -> tuple[Agent, AgentRuntimeInfo | None]:
     """Create one existing public AI agent from validated settings."""
 
     if settings.kind is AgentKind.RANDOM:
-        return RandomAgent(empire, seed=settings.seed)
+        return RandomAgent(empire, seed=settings.seed), None
     if settings.kind is AgentKind.HEURISTIC:
-        return HeuristicAgent(empire)
+        return HeuristicAgent(empire), None
     if settings.kind is AgentKind.MINIMAX:
-        return MinimaxAgent(empire, SearchConfig(settings.depth))
-    return IterativeMinimaxAgent(
-        empire,
-        IterativeSearchConfig(
-            settings.max_depth,
-            node_limit=settings.node_limit,
-            time_limit_seconds=(
-                None
-                if settings.time_limit_ms is None
-                else settings.time_limit_ms / 1000
+        return MinimaxAgent(empire, SearchConfig(settings.depth)), None
+    if settings.kind is AgentKind.ITERATIVE:
+        return (
+            IterativeMinimaxAgent(
+                empire,
+                IterativeSearchConfig(
+                    settings.max_depth,
+                    node_limit=settings.node_limit,
+                    time_limit_seconds=(
+                        None
+                        if settings.time_limit_ms is None
+                        else settings.time_limit_ms / 1000
+                    ),
+                ),
             ),
-        ),
-    )
+            None,
+        )
+    return _create_neural_agent(empire, settings)
+
+
+def create_agent(empire: Empire, settings: AgentSettings) -> Agent:
+    """Create an Agent-compatible player from validated settings."""
+
+    return _create_agent_with_info(empire, settings)[0]
 
 
 @dataclass(frozen=True, slots=True)
@@ -172,6 +267,7 @@ class GameController:
         self.state = (
             state if state is not None else create_initial_state(config.first_player)
         )
+        self.agent_runtime: dict[Empire, AgentRuntimeInfo] = {}
         self.agents = self._create_agents()
         self.history: list[MoveRecord] = []
         self.selected_source: Square | None = None
@@ -180,6 +276,7 @@ class GameController:
         self.paused = config.mode is GameMode.AGENT_VS_AGENT
         self.thinking = False
         self.error: str | None = None
+        self.last_agent_diagnostics: str | None = None
 
     def _create_agents(self) -> dict[Empire, Agent]:
         controlled: set[Empire]
@@ -190,7 +287,14 @@ class GameController:
         else:
             controlled = set(Empire)
         settings = {Empire.A: self.config.agent_a, Empire.B: self.config.agent_b}
-        return {empire: create_agent(empire, settings[empire]) for empire in controlled}
+        agents: dict[Empire, Agent] = {}
+        self.agent_runtime.clear()
+        for empire in controlled:
+            agent, runtime = _create_agent_with_info(empire, settings[empire])
+            agents[empire] = agent
+            if runtime is not None:
+                self.agent_runtime[empire] = runtime
+        return agents
 
     @staticmethod
     def other_empire(empire: Empire) -> Empire:
@@ -285,8 +389,28 @@ class GameController:
             self.error = f"{name} returned an illegal action."
             self.paused = True
             return False
+        self.last_agent_diagnostics = self._agent_diagnostics(
+            snapshot.side_to_move, action
+        )
         self._apply(action)
         return True
+
+    def _agent_diagnostics(self, empire: Empire, action: Action) -> str | None:
+        settings = self.settings_for(empire)
+        runtime = self.agent_runtime.get(empire)
+        if runtime is None:
+            return None
+        action_text = format_action(self.state, action)
+        if settings.kind is AgentKind.NEURAL_POLICY:
+            return f"Neural Policy: {action_text} · device {runtime.resolved_device}"
+        result: Any = getattr(self.agents[empire], "last_search_result", None)
+        if result is None:
+            return f"Neural MCTS: {action_text} · device {runtime.resolved_device}"
+        return (
+            f"Neural MCTS: {action_text} · {result.simulations} sims · "
+            f"value {result.root_value:.3f} · {result.evaluator_calls} evals · "
+            f"depth {result.maximum_depth}"
+        )
 
     def step_agent(self) -> bool:
         """Synchronously choose and apply exactly one agent action."""
@@ -321,12 +445,19 @@ class GameController:
         """Start fresh using exactly the same validated configuration."""
 
         self.state = create_initial_state(self.config.first_player)
-        self.agents = self._create_agents()
+        for empire in tuple(self.agents):
+            settings = self.settings_for(empire)
+            if settings.kind not in {
+                AgentKind.NEURAL_POLICY,
+                AgentKind.NEURAL_MCTS,
+            }:
+                self.agents[empire] = create_agent(empire, settings)
         self.history.clear()
         self.clear_selection()
         self.paused = self.config.mode is GameMode.AGENT_VS_AGENT
         self.thinking = False
         self.error = None
+        self.last_agent_diagnostics = None
 
     def controller_name(self, empire: Empire) -> str:
         agent = self.agents.get(empire)

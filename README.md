@@ -89,7 +89,32 @@ The setup screen supports Human versus Human, Human versus Agent, and Agent
 versus Agent. Either empire can move first; in Human-versus-Agent mode the human
 can control either side. Agent choices are Random (with a seed), Heuristic,
 fixed-depth Minimax, and Iterative Minimax with a maximum depth plus either a
-node or millisecond budget. Defaults are intentionally conservative.
+node or millisecond budget. It also exposes Neural Policy and Neural MCTS.
+Defaults are intentionally conservative.
+
+Neural opponents require a compatible Milestone 12-14 checkpoint and checksum
+sidecar. **Neural Policy** plays the highest-prior legal move from the network
+alone. **Neural MCTS** combines that network with the existing PUCT search. For
+human play, both are deterministic: policy/search temperature is zero and MCTS
+root Dirichlet noise is disabled. Neural MCTS defaults to 16 simulations per
+move; edit the Simulations field on the setup screen or pass `--simulations` to
+change it. Device choices are `auto`, `cpu`, `cuda`, and `mps`; `auto` uses the
+existing neural device selector and prefers CUDA when available.
+
+The CLI options prefill the normal setup screen. Review the displayed checkpoint
+filename, identity/checksum prefix, and resolved device, then click **Start
+game**:
+
+```powershell
+python -m nubia_playground --opponent neural-policy --checkpoint "artifacts/nubia_training/iteration-14/candidate.pt" --device cuda
+python -m nubia_playground --opponent neural-mcts --checkpoint "artifacts/nubia_training/iteration-14/candidate.pt" --device cuda --simulations 16
+```
+
+You can also cycle the opponent button to Neural Policy or Neural MCTS in the UI,
+click the Checkpoint field and type a path, cycle the Device button, and edit the
+MCTS simulation count. The model loads once when the game starts and is reused
+across moves and Restart; every MCTS move still uses a fresh tree. Neural loading
+is lazy, so classical play neither loads a checkpoint nor initializes CUDA.
 
 During play, click one of the current empire's pieces and then a highlighted
 destination. Clicking the selected square or pressing Escape clears the
@@ -113,9 +138,13 @@ quiet-ply count, and terminal results remain visible during a game.
 
 Current limitations are deliberate: there are no saved games, undo/redo,
 network play, animations, audio, additional art assets, or production-grade
-accessibility controls. Search telemetry is not displayed because the shared
-Agent protocol returns only an action. The playground is optional and is not
-needed to import or use `nubia_engine` or `nubia_ai`.
+accessibility controls. Neural work runs on the existing background agent thread;
+the status reads Thinking and player input remains disabled until it completes.
+The compact panel reports Neural MCTS simulations, root value, evaluator calls,
+and maximum depth after a move. Small simulation counts are recommended for UI
+responsiveness. Initialized or minimally trained checkpoints are expected to
+play weakly; this integration is not a strength claim. The playground is
+optional and is not needed to import or use `nubia_engine` or `nubia_ai`.
 
 ## Machine-learning representation foundation
 
