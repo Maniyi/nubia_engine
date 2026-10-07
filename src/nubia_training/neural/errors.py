@@ -23,3 +23,15 @@ class CheckpointError(NeuralError):
 
 class NonFiniteTrainingError(NeuralError, RuntimeError):
     """Raised when a loss or gradient becomes non-finite."""
+
+
+class NeuralInferenceError(NeuralError, ValueError):
+    """Raised when a position evaluation violates the inference contract."""
+
+
+class MCTSConfigurationError(NeuralError, ValueError):
+    """Raised when an MCTS configuration is invalid or incompatible."""
+
+
+class MCTSSearchError(NeuralError, ValueError):
+    """Raised when MCTS cannot search the supplied position safely."""

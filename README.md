@@ -391,10 +391,59 @@ checkpoint paths are never overwritten.
 
 This is an untrained model architecture. A decreasing smoke-test loss only
 proves that forward, backward, optimizer, checkpoint, and resume paths work; it
-is not evidence of game-playing strength. No learned agent, production
-training, MCTS, neural-guided self-play, or model-versus-agent evaluation exists
-yet. Parameter and batch-memory inspection estimates exclude framework/runtime
-overhead and some intermediate activations.
+is not evidence of game-playing strength. Parameter and batch-memory inspection
+estimates exclude framework/runtime overhead and some intermediate activations.
+
+## Neural inference and deterministic PUCT search
+
+Milestone 13 adds checkpoint-backed position evaluation, a direct neural-policy
+agent, and a deterministic PUCT MCTS agent. A position evaluator accepts only a
+non-terminal immutable `GameState` and returns legal action indices and aligned
+normalized priors in engine order, plus a value in `[-1,1]`. The perspective is
+always the state's side to move. The production evaluator uses the existing
+safe, version-checked checkpoint loader, explicit device selection,
+`torch.inference_mode()`, and evaluation mode. CPU is the required validation
+path; importing the base `nubia_training` package remains free of PyTorch.
+
+Selection uses the following score for an edge from state `s` through action
+`a`:
+
+```text
+Q(s,a) + c_puct * P(s,a) * sqrt(N(s)) / (1 + N(s,a))
+```
+
+`Q` is the edge's mean value from the selecting parent player's perspective,
+`P` is its prior, `N(s)` is the parent visit count, and `N(s,a)` is the edge
+visit count. Unvisited edges have `Q = 0`. Evaluator and terminal values begin
+from the leaf side-to-move perspective and are negated exactly once per backed-up
+edge. All ties use original engine legal-action order.
+
+Each search creates a fresh tree containing complete `GameState` values,
+including repetition history. The root training target is the normalized raw
+visit-count distribution over legal actions, not the neural prior. Temperature
+zero chooses the highest visit count with engine-order ties. Positive
+temperature samples proportional to `visits ** (1 / temperature)` with an
+explicit local seed. Optional root-only Dirichlet noise is also locally seeded,
+disabled by default, and never changes value predictions or deeper priors.
+
+`NeuralPolicyAgent` chooses the greatest legal prior directly, while `MCTSAgent`
+runs a new search per move and retains its latest immutable search result for
+diagnostics. Both satisfy the unchanged structural `nubia_ai.Agent` protocol.
+An initialized or smoke-trained checkpoint is still strategically weak; these
+agents demonstrate correct inference and search, not playing strength.
+
+Run a small CPU search or bounded comparison with:
+
+```sh
+python -m nubia_training.neural search /tmp/nubia-neural-smoke/checkpoint.pt \
+  --device cpu --simulations 8 --max-depth 32 --first-player A
+python -m nubia_training.neural benchmark /tmp/nubia-neural-smoke/checkpoint.pt \
+  --device cpu --simulations 2 --games 1 --opponent random --max-plies 100
+```
+
+Safety-limit events remain errors rather than fabricated draws. Tree reuse,
+batched or parallel leaf evaluation, persistent self-play policy records,
+MCTS-guided training, and GPU optimization remain deferred.
 
 ## Development setup
 
@@ -420,6 +469,6 @@ python -m mypy src tests
 
 Notation parsing, sustained model training, transposition tables,
 repetition-aware cache keys, move ordering, Zobrist hashing, quiescence search,
-aspiration windows, parallel search, MCTS, self-play or reinforcement learning,
-production PyTorch/GPU training, APIs, website integration, persistence,
-multiplayer, production UI work, and deployment are deferred.
+aspiration windows, parallel search, self-play or reinforcement learning,
+production PyTorch/GPU training, MCTS tree reuse, APIs, website integration,
+persistence, multiplayer, production UI work, and deployment are deferred.
