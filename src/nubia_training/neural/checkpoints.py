@@ -136,11 +136,11 @@ def save_checkpoint(
     descriptor, temporary_name = tempfile.mkstemp(
         prefix=".checkpoint-", suffix=".tmp", dir=target.parent
     )
-    os.close(descriptor)
     temporary = Path(temporary_name)
     try:
-        torch.save(payload, temporary)
-        with temporary.open("rb") as stream:
+        with os.fdopen(descriptor, "wb") as stream:
+            torch.save(payload, stream)
+            stream.flush()
             os.fsync(stream.fileno())
         checksum = file_sha256(temporary)
         sidecar_data = _canonical_json(

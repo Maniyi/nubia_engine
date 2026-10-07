@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import os
 import subprocess
 import sys
 from pathlib import Path
@@ -149,8 +150,17 @@ def test_checkpoint_conflict_checksum_and_mismatches(
 
 
 def test_checkpoint_without_optimizer_and_invalid_progress(
-    tmp_path: Path, small_model_config: ModelConfig
+    tmp_path: Path,
+    small_model_config: ModelConfig,
+    monkeypatch: pytest.MonkeyPatch,
 ) -> None:
+    real_fsync = os.fsync
+
+    def assert_writable_and_sync(descriptor: int) -> None:
+        assert os.write(descriptor, b"") == 0
+        real_fsync(descriptor)
+
+    monkeypatch.setattr(os, "fsync", assert_writable_and_sync)
     model = PolicyValueNetwork(small_model_config)
     training = TrainingConfig()
     invalid = tmp_path / "invalid.pt"
