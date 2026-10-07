@@ -67,8 +67,9 @@ def _metadata(
     optimizer_step: int,
     examples_seen: int,
     latest_metrics: dict[str, float],
+    provenance: dict[str, Any] | None = None,
 ) -> dict[str, Any]:
-    return {
+    metadata = {
         "checkpoint_version": CHECKPOINT_VERSION,
         "model_architecture_version": MODEL_ARCHITECTURE_VERSION,
         "training_config_version": TRAINING_CONFIG_VERSION,
@@ -87,6 +88,9 @@ def _metadata(
         "training_seed": training_config.random_seed,
         "latest_metrics": dict(sorted(latest_metrics.items())),
     }
+    if provenance is not None:
+        metadata["provenance"] = dict(sorted(provenance.items()))
+    return metadata
 
 
 def save_checkpoint(
@@ -101,6 +105,7 @@ def save_checkpoint(
     examples_seen: int,
     latest_metrics: dict[str, float],
     optimizer: Optimizer | None = None,
+    provenance: dict[str, Any] | None = None,
 ) -> str:
     """Atomically publish a new checkpoint and canonical checksum sidecar."""
 
@@ -124,6 +129,7 @@ def save_checkpoint(
         optimizer_step,
         examples_seen,
         latest_metrics,
+        provenance,
     )
     payload = {
         "metadata": metadata,

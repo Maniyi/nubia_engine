@@ -7,6 +7,7 @@ import json
 import os
 import tempfile
 from collections import Counter
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -93,6 +94,9 @@ def build_dataset(
     *,
     shard_size: int,
     build_config: tuple[tuple[str, str | int | float | bool | None], ...] = (),
+    example_converter: Callable[
+        [RawGameRecord], tuple[ProvenancedExample, ...]
+    ] = game_to_examples,
 ) -> DatasetManifest:
     """Validate records, write verified shards, then publish one manifest."""
 
@@ -122,7 +126,7 @@ def build_dataset(
             outcomes["win_A"] += 1
         else:
             outcomes["win_B"] += 1
-        examples.extend(game_to_examples(record))
+        examples.extend(example_converter(record))
     root = Path(output_dir)
     shard_dir = root / "shards"
     shard_entries: list[dict[str, object]] = []

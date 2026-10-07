@@ -441,9 +441,54 @@ python -m nubia_training.neural benchmark /tmp/nubia-neural-smoke/checkpoint.pt 
   --device cpu --simulations 2 --games 1 --opponent random --max-plies 100
 ```
 
-Safety-limit events remain errors rather than fabricated draws. Tree reuse,
-batched or parallel leaf evaluation, persistent self-play policy records,
-MCTS-guided training, and GPU optimization remain deferred.
+Evaluation-match safety-limit events remain errors rather than fabricated draws.
+Tree reuse and batched or parallel leaf evaluation remain deferred.
+
+## Bounded neural-MCTS learning iteration
+
+Milestone 14 adds one explicit learning cycle. A source checkpoint drives a
+fresh PUCT search at every self-play ply. Sparse normalized root visit counts,
+not raw neural priors, are the policy target. After termination, the actual
+engine result supplies `+1`, `-1`, or `0` from each recorded acting perspective;
+MCTS root values are never substituted for outcomes.
+
+Self-play uses a configured positive temperature for the first N plies and a
+separate later temperature, normally zero. Move sampling, root-only Dirichlet
+noise, and policy targets remain distinct. Noise affects only legal root priors,
+never values or deeper nodes. A local seed makes control flow repeatable on the
+same backend; CPU and CUDA floating-point output is not promised to be identical.
+
+Every game uses the existing canonical raw-game persistence path. A versioned
+self-play sidecar adds checkpoint/search provenance and sparse positive visit
+counts without storing full trees or dense 60,000-action vectors. Safety-limit
+games are marked truncated rather than drawn and produce no examples. Completed
+games are authoritatively replayed before conversion to the existing sparse NPZ
+shards, manifests, and unmodified PyTorch `ShardDataset` adapter.
+
+The independent and orchestrated commands are:
+
+```powershell
+python -m nubia_training.neural self-play SOURCE.pt artifacts/nubia_training/self-play --device cuda --games 1 --simulations 8 --seed 14
+python -m nubia_training.neural inspect-self-play artifacts/nubia_training/self-play
+python -m nubia_training.neural run-iteration SOURCE.pt artifacts/nubia_training/iteration-14 --device cuda --games 2 --simulations 8 --batch-size 4 --max-steps 10 --gradient-accumulation 2 --amp --seed 14
+python -m nubia_training.neural inspect-iteration artifacts/nubia_training/iteration-14
+```
+
+`run-iteration` stops after self-play, validation, dataset construction, bounded
+AdamW training, candidate checkpoint publication, and an integrity-checked
+summary. It never promotes the candidate or overwrites the source. Resume restores
+optimizer state and progress only after dataset, architecture, and representation
+checks.
+
+CUDA automatic mixed precision is optional and explicit with `--amp`; CPU AMP is
+rejected. For a 4 GB GTX 1650, begin with batches of four or fewer and use gradient
+accumulation. The factorized policy head, sparse persistent targets, lazy shard
+loading, and current-batch-only legal masks remain in place.
+
+An initial checkpoint may be essentially untrained, so its self-play quality is
+limited. One iteration and decreasing loss do not establish playing strength.
+Candidate evaluation, promotion gates, Elo/SPRT, parallel search, replay-buffer
+management, and indefinitely repeating or distributed workers remain future work.
 
 ## Development setup
 
@@ -467,8 +512,8 @@ python -m mypy src tests
 
 ## Deferred work
 
-Notation parsing, sustained model training, transposition tables,
+Notation parsing, automatic model promotion, transposition tables,
 repetition-aware cache keys, move ordering, Zobrist hashing, quiescence search,
-aspiration windows, parallel search, self-play or reinforcement learning,
-production PyTorch/GPU training, MCTS tree reuse, APIs, website integration,
+aspiration windows, parallel search, repeating/distributed self-play,
+candidate-vs-baseline gating, MCTS tree reuse, APIs, website integration,
 persistence, multiplayer, production UI work, and deployment are deferred.

@@ -35,3 +35,11 @@ class MCTSConfigurationError(NeuralError, ValueError):
 
 class MCTSSearchError(NeuralError, ValueError):
     """Raised when MCTS cannot search the supplied position safely."""
+
+
+class SelfPlayError(NeuralError, ValueError):
+    """Raised when self-play configuration, records, or corpora are invalid."""
+
+
+class IterationError(NeuralError, ValueError):
+    """Raised when a bounded training iteration cannot complete safely."""
