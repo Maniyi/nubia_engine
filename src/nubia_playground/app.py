@@ -6,7 +6,9 @@ import argparse
 import sys
 import time
 from concurrent.futures import Future
+from contextlib import suppress
 from dataclasses import dataclass, field
+from pathlib import Path
 from threading import Thread
 from typing import Any
 
@@ -35,6 +37,83 @@ from nubia_playground.controller import (
 )
 from nubia_playground.panels import Button, draw_lines
 from nubia_playground.piece_assets import PIECE_ASSETS, PieceIconStore
+
+PROJECT_ROOT = Path(__file__).resolve().parents[2]
+CHECKPOINT_ARTIFACT_DIRECTORY = PROJECT_ROOT / "artifacts" / "nubia_training"
+
+
+class CheckpointDialogError(RuntimeError):
+    """Raised when the optional native checkpoint dialog cannot be used."""
+
+
+def checkpoint_dialog_initial_directory() -> Path:
+    """Return the preferred existing directory for the checkpoint dialog."""
+
+    if CHECKPOINT_ARTIFACT_DIRECTORY.is_dir():
+        return CHECKPOINT_ARTIFACT_DIRECTORY
+    current = Path.cwd()
+    return current if current.is_dir() else PROJECT_ROOT
+
+
+def select_checkpoint_file(initial_directory: Path) -> str | None:
+    """Show a short-lived native file dialog without importing neural code."""
+
+    try:
+        import tkinter as tk
+        from tkinter import filedialog
+    except ImportError as error:
+        raise CheckpointDialogError(
+            "Checkpoint browser is unavailable because Tkinter is not installed; "
+            "type the checkpoint path manually."
+        ) from error
+
+    root: Any = None
+    try:
+        root = tk.Tk()
+        root.withdraw()
+        selected = filedialog.askopenfilename(
+            parent=root,
+            title="Select NUBIA neural checkpoint",
+            initialdir=str(initial_directory),
+            filetypes=(
+                ("PyTorch checkpoints", "*.pt"),
+                ("All files", "*.*"),
+            ),
+        )
+    except (OSError, RuntimeError, tk.TclError) as error:
+        raise CheckpointDialogError(
+            f"Checkpoint browser could not be opened: {error}"
+        ) from error
+    finally:
+        if root is not None:
+            with suppress(tk.TclError):
+                root.destroy()
+    return str(selected) if selected else None
+
+
+def validate_checkpoint_selection(selected: str | Path) -> Path:
+    """Validate checkpoint and sidecar readability without loading PyTorch."""
+
+    checkpoint = Path(selected).expanduser()
+    try:
+        if not checkpoint.is_file():
+            raise SetupValidationError(
+                f"Selected checkpoint does not exist: {checkpoint}"
+            )
+        sidecar = checkpoint.with_name(checkpoint.name + ".sha256.json")
+        if not sidecar.is_file():
+            raise SetupValidationError(f"Checkpoint sidecar is missing: {sidecar}")
+        with checkpoint.open("rb") as stream:
+            stream.read(1)
+        with sidecar.open("rb") as stream:
+            stream.read(1)
+    except SetupValidationError:
+        raise
+    except OSError as error:
+        raise SetupValidationError(
+            f"Cannot read selected checkpoint or sidecar: {error}"
+        ) from error
+    return checkpoint.resolve()
 
 
 @dataclass(slots=True)
@@ -316,7 +395,17 @@ class PlaygroundApp:
             for kind in self.setup.kinds.values()
         ):
             self._text_field("Checkpoint", "checkpoint", 52, y)
-            y += 52
+            self._button("Browse...", (812, y - 7, 110, 34), self._browse_checkpoint)
+            if self.setup.checkpoint:
+                self.screen.blit(
+                    self.small_font.render(
+                        f"Selected: {Path(self.setup.checkpoint).name}",
+                        True,
+                        theme.MUTED,
+                    ),
+                    (150, y + 30),
+                )
+            y += 68
         self._field("Auto delay (ms)", "delay", 52, max(y + 15, 370))
         self._button("Start game", (52, max(y + 75, 430), 190, 44), self._start)
         self._button("Quit", (260, max(y + 75, 430), 110, 44), self._quit)
@@ -362,6 +451,19 @@ class PlaygroundApp:
         self.setup.device = devices[
             (devices.index(self.setup.device) + 1) % len(devices)
         ]
+
+    def _browse_checkpoint(self) -> None:
+        try:
+            selected = select_checkpoint_file(checkpoint_dialog_initial_directory())
+            if selected is None:
+                return
+            checkpoint = validate_checkpoint_selection(selected)
+        except (CheckpointDialogError, SetupValidationError) as error:
+            self.setup.error = str(error)
+            return
+        self.setup.checkpoint = str(checkpoint)
+        self.setup.active_field = None
+        self.setup.error = None
 
     def _toggle_budget(self, empire: Empire) -> None:
         self.setup.budget_kind[empire] = (

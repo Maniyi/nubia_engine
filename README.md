@@ -111,8 +111,10 @@ python -m nubia_playground --opponent neural-mcts --checkpoint "artifacts/nubia_
 ```
 
 You can also cycle the opponent button to Neural Policy or Neural MCTS in the UI,
-click the Checkpoint field and type a path, cycle the Device button, and edit the
-MCTS simulation count. The model loads once when the game starts and is reused
+then use **Browse...** to select a `.pt` checkpoint with its matching
+`.pt.sha256.json` sidecar, or click the Checkpoint field and type a path manually.
+Cycle the Device button and edit the MCTS simulation count as needed. The model
+loads once when the game starts and is reused
 across moves and Restart; every MCTS move still uses a fresh tree. Neural loading
 is lazy, so classical play neither loads a checkpoint nor initializes CUDA.
 

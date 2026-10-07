@@ -4,6 +4,7 @@ import os
 import time
 from collections.abc import Iterator
 from dataclasses import replace
+from pathlib import Path
 
 os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
 os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
@@ -12,6 +13,7 @@ import pygame
 import pytest
 from conftest import piece, state_with
 
+import nubia_playground.app as playground_app
 from nubia_engine import (
     ActionKind,
     Empire,
@@ -62,6 +64,137 @@ def test_setup_draws_every_contextual_agent_configuration(app: PlaygroundApp) ->
     app.setup.kinds[Empire.B] = AgentKind.MINIMAX
     app.setup.error = "visible problem"
     app._draw()
+
+
+def test_neural_setup_draws_browse_control_and_selected_filename(
+    app: PlaygroundApp,
+) -> None:
+    seen: list[str] = []
+    real_font = app.small_font
+
+    class SpyFont:
+        def render(
+            self, text: str, antialias: bool, color: tuple[int, int, int]
+        ) -> pygame.Surface:
+            seen.append(text)
+            return real_font.render(text, antialias, color)
+
+    app.small_font = SpyFont()  # type: ignore[assignment]
+    app.setup.kinds[Empire.B] = AgentKind.NEURAL_POLICY
+    app.setup.checkpoint = r"C:\models\recognizable-checkpoint.pt"
+    app._draw()
+    assert any(button.label == "Browse..." for button in app.buttons)
+    assert "Selected: recognizable-checkpoint.pt" in seen
+
+
+def test_browse_selection_populates_existing_checkpoint_field(
+    app: PlaygroundApp,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checkpoint = tmp_path / "selected.pt"
+    checkpoint.write_bytes(b"checkpoint")
+    checkpoint.with_name(checkpoint.name + ".sha256.json").write_text(
+        "{}", encoding="ascii"
+    )
+    monkeypatch.setattr(
+        playground_app,
+        "select_checkpoint_file",
+        lambda initial_directory: str(checkpoint),
+    )
+
+    app._browse_checkpoint()
+
+    assert app.setup.checkpoint == str(checkpoint.resolve())
+    assert app.setup.error is None
+
+
+def test_browse_cancel_preserves_previous_checkpoint(
+    app: PlaygroundApp, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app.setup.checkpoint = "previous.pt"
+    monkeypatch.setattr(
+        playground_app,
+        "select_checkpoint_file",
+        lambda initial_directory: None,
+    )
+
+    app._browse_checkpoint()
+
+    assert app.setup.checkpoint == "previous.pt"
+
+
+def test_browse_missing_sidecar_is_a_focused_error(
+    app: PlaygroundApp,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    checkpoint = tmp_path / "missing-sidecar.pt"
+    checkpoint.write_bytes(b"checkpoint")
+    monkeypatch.setattr(
+        playground_app,
+        "select_checkpoint_file",
+        lambda initial_directory: str(checkpoint),
+    )
+
+    app._browse_checkpoint()
+
+    assert app.setup.checkpoint == ""
+    assert app.setup.error is not None
+    assert "sidecar is missing" in app.setup.error
+
+
+def test_browse_missing_checkpoint_is_a_focused_error(
+    app: PlaygroundApp,
+    tmp_path: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    missing = tmp_path / "missing.pt"
+    monkeypatch.setattr(
+        playground_app,
+        "select_checkpoint_file",
+        lambda initial_directory: str(missing),
+    )
+
+    app._browse_checkpoint()
+
+    assert app.setup.checkpoint == ""
+    assert app.setup.error is not None
+    assert "does not exist" in app.setup.error
+
+
+def test_checkpoint_dialog_prefers_existing_artifact_directory(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(playground_app, "CHECKPOINT_ARTIFACT_DIRECTORY", tmp_path)
+    assert playground_app.checkpoint_dialog_initial_directory() == tmp_path
+
+
+def test_browse_dialog_failure_preserves_manual_entry(
+    app: PlaygroundApp, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    app.setup.checkpoint = "manually-entered.pt"
+
+    def unavailable(initial_directory: Path) -> str | None:
+        raise playground_app.CheckpointDialogError("dialog unavailable")
+
+    monkeypatch.setattr(playground_app, "select_checkpoint_file", unavailable)
+    app._browse_checkpoint()
+    assert app.setup.checkpoint == "manually-entered.pt"
+    assert app.setup.error == "dialog unavailable"
+
+
+def test_manual_checkpoint_path_entry_still_works(app: PlaygroundApp) -> None:
+    app.setup.active_field = "checkpoint"
+    for character in r"C:\models\manual.pt":
+        app._key(
+            pygame.event.Event(
+                pygame.KEYDOWN,
+                key=pygame.K_UNKNOWN,
+                unicode=character,
+            )
+        )
+    assert app.setup.checkpoint == r"C:\models\manual.pt"
 
 
 def test_setup_keyboard_editing_and_valid_start(app: PlaygroundApp) -> None:

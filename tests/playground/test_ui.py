@@ -77,3 +77,33 @@ def test_existing_packages_do_not_import_pygame() -> None:
         text=True,
     )
     assert completed.returncode == 0, completed.stderr
+
+
+def test_browsing_checkpoint_path_does_not_import_torch() -> None:
+    code = r"""
+import os
+import sys
+import tempfile
+from pathlib import Path
+
+os.environ.setdefault("SDL_VIDEODRIVER", "dummy")
+os.environ.setdefault("SDL_AUDIODRIVER", "dummy")
+import nubia_playground.app as playground_app
+
+with tempfile.TemporaryDirectory() as directory:
+    checkpoint = Path(directory) / "selected.pt"
+    checkpoint.write_bytes(b"checkpoint")
+    checkpoint.with_name(checkpoint.name + ".sha256.json").write_text("{}")
+    playground_app.select_checkpoint_file = lambda initial_directory: str(checkpoint)
+    app = playground_app.PlaygroundApp()
+    app._browse_checkpoint()
+    assert app.setup.checkpoint == str(checkpoint.resolve())
+    assert "torch" not in sys.modules
+"""
+    completed = subprocess.run(
+        [sys.executable, "-c", code],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert completed.returncode == 0, completed.stderr
